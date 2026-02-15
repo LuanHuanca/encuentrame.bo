@@ -1,0 +1,96 @@
+{
+  "api": {
+    "api9fc8483b": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
+    }
+  },
+  "auth": {
+    "encuentrameboedfbec7a": {
+      "customAuth": false,
+      "dependsOn": [],
+      "frontendAuthConfig": {
+        "mfaConfiguration": "OFF",
+        "mfaTypes": [
+          "SMS"
+        ],
+        "passwordProtectionSettings": {
+          "passwordPolicyCharacters": [],
+          "passwordPolicyMinLength": 8
+        },
+        "signupAttributes": [
+          "EMAIL"
+        ],
+        "socialProviders": [],
+        "usernameAttributes": [
+          "EMAIL",
+          "PHONE_NUMBER"
+        ],
+        "verificationMechanisms": [
+          "EMAIL"
+        ]
+      },
+      "providerPlugin": "awscloudformation",
+      "service": "Cognito"
+    }
+  },
+  "function": {
+    "encuentrameApi": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_function_encuentrameApi_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_openinglogsTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_stallsTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_usersTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    }
+  }
+}

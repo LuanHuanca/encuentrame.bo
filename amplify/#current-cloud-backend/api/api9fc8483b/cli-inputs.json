@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "paths": {
+    "/api": {
+      "name": "/api",
+      "lambdaFunction": "encuentrameApi",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
+    }
+  }
+}

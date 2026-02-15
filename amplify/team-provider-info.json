@@ -1,0 +1,33 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-encuentramebo-dev-acde3-authRole",
+      "UnauthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
+      "UnauthRoleName": "amplify-encuentramebo-dev-acde3-unauthRole",
+      "StackName": "amplify-encuentramebo-dev-acde3",
+      "StackId": "arn:aws:cloudformation:us-east-1:114030600469:stack/amplify-encuentramebo-dev-acde3/0c2db220-09e8-11f1-af00-0eb332b34e17",
+      "AmplifyAppId": "d2uaoqcij756ac",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
+    },
+    "categories": {
+      "auth": {
+        "encuentrameboedfbec7a": {}
+      },
+      "function": {
+        "encuentrameApi": {
+          "deploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
+          "s3Key": "amplify-builds/encuentrameApi-30385a72724d5266654f-build.zip",
+          "usersTable": "encuentrame-dev-users",
+          "stallsTable": "encuentrame-dev-stalls",
+          "openinglogsTable": "encuentrame-dev-openinglogs"
+        }
+      },
+      "api": {
+        "api9fc8483b": {}
+      }
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "providers": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-encuentramebo-dev-acde3-authRole",
+      "UnauthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
+      "UnauthRoleName": "amplify-encuentramebo-dev-acde3-unauthRole",
+      "StackName": "amplify-encuentramebo-dev-acde3",
+      "StackId": "arn:aws:cloudformation:us-east-1:114030600469:stack/amplify-encuentramebo-dev-acde3/0c2db220-09e8-11f1-af00-0eb332b34e17",
+      "AmplifyAppId": "d2uaoqcij756ac",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
+    }
+  },
+  "auth": {
+    "encuentrameboedfbec7a": {
+      "service": "Cognito",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [],
+      "customAuth": false,
+      "frontendAuthConfig": {
+        "socialProviders": [],
+        "usernameAttributes": [
+          "EMAIL",
+          "PHONE_NUMBER"
+        ],
+        "signupAttributes": [
+          "EMAIL"
+        ],
+        "passwordProtectionSettings": {
+          "passwordPolicyMinLength": 8,
+          "passwordPolicyCharacters": []
+        },
+        "mfaConfiguration": "OFF",
+        "mfaTypes": [
+          "SMS"
+        ],
+        "verificationMechanisms": [
+          "EMAIL"
+        ]
+      },
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/auth/encuentrameboedfbec7a-cloudformation-template.json",
+        "logicalId": "authencuentrameboedfbec7a"
+      },
+      "lastPushTimeStamp": "2026-02-15T01:38:44.564Z",
+      "output": {
+        "UserPoolId": "us-east-1_Dj2ogsZCX",
+        "AppClientIDWeb": "3movbgaibn1eufte59ojr5deqc",
+        "AppClientID": "6hg4d9anc2f4132nj7k2k7fha0",
+        "IdentityPoolId": "us-east-1:23112de2-fdef-4995-b362-b3df2c85354e",
+        "UserPoolArn": "arn:aws:cognito-idp:us-east-1:114030600469:userpool/us-east-1_Dj2ogsZCX",
+        "IdentityPoolName": "encuentrameboedfbec7a_identitypool_edfbec7a__dev",
+        "UserPoolName": "encuentrameboedfbec7a_userpool_edfbec7a"
+      },
+      "lastPushDirHash": "2oztao2lk/aavyNZPPQyXpnm2aw="
+    }
+  },
+  "function": {
+    "encuentrameApi": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "lastBuildTimeStamp": "2026-02-15T01:36:51.946Z",
+      "lastBuildType": "PROD",
+      "lastPackageTimeStamp": "2026-02-15T01:36:51.998Z",
+      "distZipFilename": "encuentrameApi-30385a72724d5266654f-build.zip",
+      "s3Bucket": {
+        "deploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
+        "s3Key": "amplify-builds/encuentrameApi-30385a72724d5266654f-build.zip"
+      },
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/function/encuentrameApi-cloudformation-template.json",
+        "logicalId": "functionencuentrameApi"
+      },
+      "lastPushTimeStamp": "2026-02-15T01:38:45.638Z",
+      "output": {
+        "LambdaExecutionRoleArn": "arn:aws:iam::114030600469:role/encuentrameboLambdaRole0ecf7666-dev",
+        "Region": "us-east-1",
+        "Arn": "arn:aws:lambda:us-east-1:114030600469:function:encuentrameApi-dev",
+        "Name": "encuentrameApi-dev",
+        "LambdaExecutionRole": "encuentrameboLambdaRole0ecf7666-dev"
+      },
+      "lastPushDirHash": "m0hQXY0jkwz+n4pjb2V/k+LlxX8="
+    }
+  },
+  "api": {
+    "api9fc8483b": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi",
+          "attributes": [
+            "Name",
+            "Arn"
+          ]
+        }
+      ],
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/api/api9fc8483b-cloudformation-template.json",
+        "logicalId": "apiapi9fc8483b"
+      },
+      "lastPushTimeStamp": "2026-02-15T01:38:44.569Z",
+      "output": {
+        "ApiName": "api9fc8483b",
+        "RootUrl": "https://1pxhljln79.execute-api.us-east-1.amazonaws.com/dev",
+        "ApiId": "1pxhljln79"
+      },
+      "lastPushDirHash": "tA2FbZSS72mzP78SLSObJp6GrOE="
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "lambdaLayers": [],
+  "environmentVariableList": [
+    {
+      "cloudFormationParameterName": "usersTable",
+      "environmentVariableName": "USERS_TABLE"
+    },
+    {
+      "cloudFormationParameterName": "stallsTable",
+      "environmentVariableName": "STALLS_TABLE"
+    },
+    {
+      "cloudFormationParameterName": "openinglogsTable",
+      "environmentVariableName": "OPENINGLOGS_TABLE"
+    }
+  ]
+}
