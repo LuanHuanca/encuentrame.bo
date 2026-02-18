@@ -11,7 +11,7 @@
     "env": {
       "Type": "String"
     },
-    "api9fc8483b": {
+    "apic45634fb": {
       "Type": "String"
     }
   },
@@ -52,7 +52,7 @@
                       },
                       ":",
                       {
-                        "Ref": "api9fc8483b"
+                        "Ref": "apic45634fb"
                       },
                       "/",
                       {
@@ -82,7 +82,7 @@
                       },
                       ":",
                       {
-                        "Ref": "api9fc8483b"
+                        "Ref": "apic45634fb"
                       },
                       "/",
                       {

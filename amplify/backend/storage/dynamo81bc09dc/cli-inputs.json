@@ -1,0 +1,14 @@
+{
+  "resourceName": "dynamo81bc09dc",
+  "tableName": "openinglogs",
+  "partitionKey": {
+    "fieldName": "pk",
+    "fieldType": "string"
+  },
+  "sortKey": {
+    "fieldName": "sk",
+    "fieldType": "string"
+  },
+  "gsi": [],
+  "triggerFunctions": []
+}

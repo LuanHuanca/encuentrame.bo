@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "{\"createdOn\":\"Windows\",\"createdBy\":\"Amplify\",\"createdWith\":\"14.2.5\",\"stackType\":\"function-Lambda\",\"metadata\":{\"whyContinueWithGen1\":\"I find the Gen 1 CLI easier to use\"}}",
+  "Description": "{\"createdOn\":\"Windows\",\"createdBy\":\"Amplify\",\"createdWith\":\"14.2.5\",\"stackType\":\"function-Lambda\",\"metadata\":{\"whyContinueWithGen1\":\"I am a current Gen 1 user\"}}",
   "Parameters": {
     "CloudWatchRule": {
       "Type": "String",
@@ -14,15 +14,6 @@
       "Type": "String"
     },
     "s3Key": {
-      "Type": "String"
-    },
-    "usersTable": {
-      "Type": "String"
-    },
-    "stallsTable": {
-      "Type": "String"
-    },
-    "openinglogsTable": {
       "Type": "String"
     }
   },
@@ -78,15 +69,6 @@
             },
             "REGION": {
               "Ref": "AWS::Region"
-            },
-            "USERS_TABLE": {
-              "Ref": "usersTable"
-            },
-            "STALLS_TABLE": {
-              "Ref": "stallsTable"
-            },
-            "OPENINGLOGS_TABLE": {
-              "Ref": "openinglogsTable"
             }
           }
         },
@@ -107,12 +89,12 @@
         "RoleName": {
           "Fn::If": [
             "ShouldNotCreateEnvResources",
-            "encuentrameboLambdaRole0ecf7666",
+            "encuentrameboLambdaRoleccdd18fe",
             {
               "Fn::Join": [
                 "",
                 [
-                  "encuentrameboLambdaRole0ecf7666",
+                  "encuentrameboLambdaRoleccdd18fe",
                   "-",
                   {
                     "Ref": "env"

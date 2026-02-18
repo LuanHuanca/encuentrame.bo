@@ -4,9 +4,9 @@ const amplifyconfig = '''{
     "api": {
         "plugins": {
             "awsAPIPlugin": {
-                "api9fc8483b": {
+                "apic45634fb": {
                     "endpointType": "REST",
-                    "endpoint": "https://1pxhljln79.execute-api.us-east-1.amazonaws.com/dev",
+                    "endpoint": "https://9ilni7uqm7.execute-api.us-east-1.amazonaws.com/dev",
                     "region": "us-east-1",
                     "authorizationType": "AWS_IAM"
                 }
@@ -24,15 +24,15 @@ const amplifyconfig = '''{
                 "CredentialsProvider": {
                     "CognitoIdentity": {
                         "Default": {
-                            "PoolId": "us-east-1:23112de2-fdef-4995-b362-b3df2c85354e",
+                            "PoolId": "us-east-1:e9120653-4b98-4ec2-9292-540f9f341885",
                             "Region": "us-east-1"
                         }
                     }
                 },
                 "CognitoUserPool": {
                     "Default": {
-                        "PoolId": "us-east-1_Dj2ogsZCX",
-                        "AppClientId": "6hg4d9anc2f4132nj7k2k7fha0",
+                        "PoolId": "us-east-1_nmOspS3Fx",
+                        "AppClientId": "47l8pj0gjan9g23k2chgj7kgce",
                         "Region": "us-east-1"
                     }
                 },
@@ -41,8 +41,7 @@ const amplifyconfig = '''{
                         "authenticationFlowType": "USER_SRP_AUTH",
                         "socialProviders": [],
                         "usernameAttributes": [
-                            "EMAIL",
-                            "PHONE_NUMBER"
+                            "EMAIL"
                         ],
                         "signupAttributes": [
                             "EMAIL"
@@ -59,7 +58,37 @@ const amplifyconfig = '''{
                             "EMAIL"
                         ]
                     }
+                },
+                "S3TransferUtility": {
+                    "Default": {
+                        "Bucket": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
+                        "Region": "us-east-1"
+                    }
+                },
+                "DynamoDBObjectMapper": {
+                    "Default": {
+                        "Region": "us-east-1"
+                    }
                 }
+            }
+        }
+    },
+    "storage": {
+        "plugins": {
+            "awsS3StoragePlugin": {
+                "bucket": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
+                "region": "us-east-1",
+                "defaultAccessLevel": "guest"
+            },
+            "awsDynamoDbStoragePlugin": {
+                "partitionKeyName": "pk",
+                "sortKeyName": "sk",
+                "sortKeyType": "S",
+                "region": "us-east-1",
+                "arn": "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev",
+                "streamArn": "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev/stream/2026-02-18T17:20:38.384",
+                "partitionKeyType": "S",
+                "name": "stalls-dev"
             }
         }
     }

@@ -1,6 +1,6 @@
 {
   "api": {
-    "api9fc8483b": {
+    "apic45634fb": {
       "dependsOn": [
         {
           "attributes": [
@@ -16,7 +16,7 @@
     }
   },
   "auth": {
-    "encuentrameboedfbec7a": {
+    "encuentrameboed4663da": {
       "customAuth": false,
       "dependsOn": [],
       "frontendAuthConfig": {
@@ -33,8 +33,7 @@
         ],
         "socialProviders": [],
         "usernameAttributes": [
-          "EMAIL",
-          "PHONE_NUMBER"
+          "EMAIL"
         ],
         "verificationMechanisms": [
           "EMAIL"
@@ -60,14 +59,6 @@
         }
       ]
     },
-    "AMPLIFY_function_encuentrameApi_openinglogsTable": {
-      "usedBy": [
-        {
-          "category": "function",
-          "resourceName": "encuentrameApi"
-        }
-      ]
-    },
     "AMPLIFY_function_encuentrameApi_s3Key": {
       "usedBy": [
         {
@@ -75,22 +66,25 @@
           "resourceName": "encuentrameApi"
         }
       ]
+    }
+  },
+  "storage": {
+    "dynamo324f6f26": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
     },
-    "AMPLIFY_function_encuentrameApi_stallsTable": {
-      "usedBy": [
-        {
-          "category": "function",
-          "resourceName": "encuentrameApi"
-        }
-      ]
+    "dynamo800bfc2b": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
     },
-    "AMPLIFY_function_encuentrameApi_usersTable": {
-      "usedBy": [
-        {
-          "category": "function",
-          "resourceName": "encuentrameApi"
-        }
-      ]
+    "dynamo81bc09dc": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
+    },
+    "s39e8ab6e7": {
+      "dependsOn": [],
+      "providerPlugin": "awscloudformation",
+      "service": "S3"
     }
   }
 }

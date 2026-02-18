@@ -1,0 +1,14 @@
+{
+  "resourceName": "dynamo324f6f26",
+  "tableName": "users",
+  "partitionKey": {
+    "fieldName": "pk",
+    "fieldType": "string"
+  },
+  "sortKey": {
+    "fieldName": "sk",
+    "fieldType": "string"
+  },
+  "gsi": [],
+  "triggerFunctions": []
+}

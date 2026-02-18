@@ -1,0 +1,26 @@
+{
+  "resourceName": "dynamo800bfc2b",
+  "tableName": "stalls",
+  "partitionKey": {
+    "fieldName": "pk",
+    "fieldType": "string"
+  },
+  "sortKey": {
+    "fieldName": "sk",
+    "fieldType": "string"
+  },
+  "gsi": [
+    {
+      "name": "gsi1",
+      "partitionKey": {
+        "fieldName": "gsi1pk",
+        "fieldType": "string"
+      },
+      "sortKey": {
+        "fieldName": "gsi1sk",
+        "fieldType": "string"
+      }
+    }
+  ],
+  "triggerFunctions": []
+}

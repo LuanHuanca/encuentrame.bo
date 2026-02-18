@@ -1,32 +1,35 @@
 {
   "dev": {
     "awscloudformation": {
-      "AuthRoleName": "amplify-encuentramebo-dev-acde3-authRole",
-      "UnauthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-unauthRole",
-      "AuthRoleArn": "arn:aws:iam::114030600469:role/amplify-encuentramebo-dev-acde3-authRole",
+      "AuthRoleName": "amplify-encuentramebo-dev-f3550-authRole",
+      "UnauthRoleArn": "arn:aws:iam::941570845580:role/amplify-encuentramebo-dev-f3550-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::941570845580:role/amplify-encuentramebo-dev-f3550-authRole",
       "Region": "us-east-1",
-      "DeploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
-      "UnauthRoleName": "amplify-encuentramebo-dev-acde3-unauthRole",
-      "StackName": "amplify-encuentramebo-dev-acde3",
-      "StackId": "arn:aws:cloudformation:us-east-1:114030600469:stack/amplify-encuentramebo-dev-acde3/0c2db220-09e8-11f1-af00-0eb332b34e17",
-      "AmplifyAppId": "d2uaoqcij756ac",
-      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-acde3-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
+      "DeploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
+      "UnauthRoleName": "amplify-encuentramebo-dev-f3550-unauthRole",
+      "StackName": "amplify-encuentramebo-dev-f3550",
+      "StackId": "arn:aws:cloudformation:us-east-1:941570845580:stack/amplify-encuentramebo-dev-f3550/e53e65d0-0ce2-11f1-93aa-0affcc93400d",
+      "AmplifyAppId": "d20acarl3d0p7h",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
     },
     "categories": {
-      "auth": {
-        "encuentrameboedfbec7a": {}
-      },
       "function": {
         "encuentrameApi": {
-          "deploymentBucketName": "amplify-encuentramebo-dev-acde3-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-30385a72724d5266654f-build.zip",
-          "usersTable": "encuentrame-dev-users",
-          "stallsTable": "encuentrame-dev-stalls",
-          "openinglogsTable": "encuentrame-dev-openinglogs"
+          "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
+          "s3Key": "amplify-builds/encuentrameApi-6234514c304d642b3731-build.zip"
         }
       },
       "api": {
-        "api9fc8483b": {}
+        "apic45634fb": {}
+      },
+      "auth": {
+        "encuentrameboed4663da": {}
+      },
+      "storage": {
+        "s39e8ab6e7": {},
+        "dynamo324f6f26": {},
+        "dynamo81bc09dc": {},
+        "dynamo800bfc2b": {}
       }
     }
   }
