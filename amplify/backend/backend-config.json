@@ -46,11 +46,20 @@
   "function": {
     "encuentrameApi": {
       "build": true,
+      "dependsOn": [],
       "providerPlugin": "awscloudformation",
       "service": "Lambda"
     }
   },
   "parameters": {
+    "AMPLIFY_function_encuentrameApi_bucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
     "AMPLIFY_function_encuentrameApi_deploymentBucketName": {
       "usedBy": [
         {
@@ -59,7 +68,31 @@
         }
       ]
     },
+    "AMPLIFY_function_encuentrameApi_openinglogsTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
     "AMPLIFY_function_encuentrameApi_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_stallsTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_usersTable": {
       "usedBy": [
         {
           "category": "function",

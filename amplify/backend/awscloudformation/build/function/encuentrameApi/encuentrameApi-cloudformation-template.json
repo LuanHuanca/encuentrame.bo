@@ -15,6 +15,18 @@
     },
     "s3Key": {
       "Type": "String"
+    },
+    "bucketName": {
+      "Type": "String"
+    },
+    "usersTable": {
+      "Type": "String"
+    },
+    "stallsTable": {
+      "Type": "String"
+    },
+    "openinglogsTable": {
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -69,6 +81,18 @@
             },
             "REGION": {
               "Ref": "AWS::Region"
+            },
+            "BUCKET_NAME": {
+              "Ref": "bucketName"
+            },
+            "USERS_TABLE": {
+              "Ref": "usersTable"
+            },
+            "STALLS_TABLE": {
+              "Ref": "stallsTable"
+            },
+            "OPENINGLOGS_TABLE": {
+              "Ref": "openinglogsTable"
             }
           }
         },
@@ -164,6 +188,77 @@
           ]
         }
       }
+    },
+    "CustomLambdaExecutionPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "custom-lambda-execution-policy",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:Query"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:941570845580:table/users-dev",
+                "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev",
+                "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev",
+                "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev/index/*"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject"
+              ],
+              "Resource": [
+                "arn:aws:s3:::encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev/*"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "rekognition:DetectLabels",
+                "rekognition:DetectModerationLabels"
+              ],
+              "Resource": [
+                "*"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel"
+              ],
+              "Resource": [
+                "*"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "transcribe:StartTranscriptionJob",
+                "transcribe:GetTranscriptionJob"
+              ],
+              "Resource": [
+                "*"
+              ]
+            }
+          ]
+        },
+        "Roles": [
+          {
+            "Ref": "LambdaExecutionRole"
+          }
+        ]
+      },
+      "DependsOn": "LambdaExecutionRole"
     }
   },
   "Outputs": {

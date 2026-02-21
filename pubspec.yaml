@@ -16,6 +16,8 @@ dependencies:
   # Amplify Gen 1 (Auth Cognito)
   amplify_flutter: ^2.10.0
   amplify_auth_cognito: ^2.10.0
+  amplify_api: ^2.10.0
+  amplify_storage_s3: ^2.10.0
 
 dev_dependencies:
   flutter_test:

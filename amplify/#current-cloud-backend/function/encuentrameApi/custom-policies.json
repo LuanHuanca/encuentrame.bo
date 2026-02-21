@@ -1,6 +1,56 @@
 [
   {
-    "Action": [],
-    "Resource": []
+    "Effect": "Allow",
+    "Action": [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:Query"
+    ],
+    "Resource": [
+      "arn:aws:dynamodb:us-east-1:941570845580:table/users-dev",
+      "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev",
+      "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev",
+      "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev/index/*"
+    ]
+  },
+  {
+    "Effect": "Allow",
+    "Action": [
+      "s3:GetObject",
+      "s3:PutObject"
+    ],
+    "Resource": [
+      "arn:aws:s3:::encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev/*"
+    ]
+  },
+  {
+    "Effect": "Allow",
+    "Action": [
+      "rekognition:DetectLabels",
+      "rekognition:DetectModerationLabels"
+    ],
+    "Resource": [
+      "*"
+    ]
+  },
+  {
+    "Effect": "Allow",
+    "Action": [
+      "bedrock:InvokeModel"
+    ],
+    "Resource": [
+      "*"
+    ]
+  },
+  {
+    "Effect": "Allow",
+    "Action": [
+      "transcribe:StartTranscriptionJob",
+      "transcribe:GetTranscriptionJob"
+    ],
+    "Resource": [
+      "*"
+    ]
   }
 ]

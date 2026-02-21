@@ -220,6 +220,27 @@
         }
       }
     },
+    "apiapic45634fb": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/apic45634fb-cloudformation-template.json",
+        "Parameters": {
+          "functionencuentrameApiName": {
+            "Fn::GetAtt": [
+              "functionencuentrameApi",
+              "Outputs.Name"
+            ]
+          },
+          "functionencuentrameApiArn": {
+            "Fn::GetAtt": [
+              "functionencuentrameApi",
+              "Outputs.Arn"
+            ]
+          },
+          "env": "dev"
+        }
+      }
+    },
     "authencuentrameboed4663da": {
       "Type": "AWS::CloudFormation::Stack",
       "Properties": {
@@ -279,29 +300,54 @@
       "Properties": {
         "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/function/encuentrameApi-cloudformation-template.json",
         "Parameters": {
+          "bucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
+          "usersTable": "users-dev",
+          "stallsTable": "stalls-dev",
+          "openinglogsTable": "openinglogs-dev",
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-6234514c304d642b3731-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-30506944365273334748-build.zip",
           "env": "dev"
         }
       }
     },
-    "apiapic45634fb": {
+    "storagedynamo324f6f26": {
       "Type": "AWS::CloudFormation::Stack",
       "Properties": {
-        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/apic45634fb-cloudformation-template.json",
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo324f6f26-cloudformation-template.json",
         "Parameters": {
-          "functionencuentrameApiName": {
-            "Fn::GetAtt": [
-              "functionencuentrameApi",
-              "Outputs.Name"
-            ]
-          },
-          "functionencuentrameApiArn": {
-            "Fn::GetAtt": [
-              "functionencuentrameApi",
-              "Outputs.Arn"
-            ]
-          },
+          "tableName": "users",
+          "partitionKeyName": "pk",
+          "partitionKeyType": "S",
+          "sortKeyName": "sk",
+          "sortKeyType": "S",
+          "env": "dev"
+        }
+      }
+    },
+    "storagedynamo800bfc2b": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo800bfc2b-cloudformation-template.json",
+        "Parameters": {
+          "tableName": "stalls",
+          "partitionKeyName": "pk",
+          "partitionKeyType": "S",
+          "sortKeyName": "sk",
+          "sortKeyType": "S",
+          "env": "dev"
+        }
+      }
+    },
+    "storagedynamo81bc09dc": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo81bc09dc-cloudformation-template.json",
+        "Parameters": {
+          "tableName": "openinglogs",
+          "partitionKeyName": "pk",
+          "partitionKeyType": "S",
+          "sortKeyName": "sk",
+          "sortKeyType": "S",
           "env": "dev"
         }
       }
@@ -335,48 +381,6 @@
           "s3PermissionsAuthenticatedUploads": "s3:PutObject",
           "s3PermissionsGuestPublic": "DISALLOW",
           "s3PermissionsGuestUploads": "DISALLOW",
-          "env": "dev"
-        }
-      }
-    },
-    "storagedynamo324f6f26": {
-      "Type": "AWS::CloudFormation::Stack",
-      "Properties": {
-        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo324f6f26-cloudformation-template.json",
-        "Parameters": {
-          "tableName": "users",
-          "partitionKeyName": "pk",
-          "partitionKeyType": "S",
-          "sortKeyName": "sk",
-          "sortKeyType": "S",
-          "env": "dev"
-        }
-      }
-    },
-    "storagedynamo81bc09dc": {
-      "Type": "AWS::CloudFormation::Stack",
-      "Properties": {
-        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo81bc09dc-cloudformation-template.json",
-        "Parameters": {
-          "tableName": "openinglogs",
-          "partitionKeyName": "pk",
-          "partitionKeyType": "S",
-          "sortKeyName": "sk",
-          "sortKeyType": "S",
-          "env": "dev"
-        }
-      }
-    },
-    "storagedynamo800bfc2b": {
-      "Type": "AWS::CloudFormation::Stack",
-      "Properties": {
-        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo800bfc2b-cloudformation-template.json",
-        "Parameters": {
-          "tableName": "stalls",
-          "partitionKeyName": "pk",
-          "partitionKeyType": "S",
-          "sortKeyName": "sk",
-          "sortKeyType": "S",
           "env": "dev"
         }
       }

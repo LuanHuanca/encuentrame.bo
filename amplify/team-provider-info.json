@@ -8,28 +8,32 @@
       "DeploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
       "UnauthRoleName": "amplify-encuentramebo-dev-f3550-unauthRole",
       "StackName": "amplify-encuentramebo-dev-f3550",
-      "StackId": "arn:aws:cloudformation:us-east-1:941570845580:stack/amplify-encuentramebo-dev-f3550/e53e65d0-0ce2-11f1-93aa-0affcc93400d",
+      "StackId": "arn:aws:cloudformation:us-east-1:941570845580:stack/amplify-encuentramebo-dev-f3550/558c67d0-0f3e-11f1-979d-0affcbe4fa4b",
       "AmplifyAppId": "d20acarl3d0p7h",
       "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
     },
     "categories": {
+      "auth": {
+        "encuentrameboed4663da": {}
+      },
       "function": {
         "encuentrameApi": {
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-6234514c304d642b3731-build.zip"
+          "s3Key": "amplify-builds/encuentrameApi-30506944365273334748-build.zip",
+          "bucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
+          "usersTable": "users-dev",
+          "stallsTable": "stalls-dev",
+          "openinglogsTable": "openinglogs-dev"
         }
       },
       "api": {
         "apic45634fb": {}
       },
-      "auth": {
-        "encuentrameboed4663da": {}
-      },
       "storage": {
-        "s39e8ab6e7": {},
         "dynamo324f6f26": {},
+        "dynamo800bfc2b": {},
         "dynamo81bc09dc": {},
-        "dynamo800bfc2b": {}
+        "s39e8ab6e7": {}
       }
     }
   }
