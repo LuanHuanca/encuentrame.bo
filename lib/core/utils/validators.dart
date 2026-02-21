@@ -1,28 +1,30 @@
-/// Validadores reutilizables para formularios.
 class Validators {
   Validators._();
 
-  static String? email(String? value) {
-    if (value == null || value.isEmpty) return 'El correo es obligatorio';
-    final regex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!regex.hasMatch(value)) return 'Correo no válido';
+  static String? requiredText(String? v, {String message = 'Campo requerido'}) {
+    if (v == null || v.trim().isEmpty) {
+      return message;
+    }
     return null;
   }
 
-  static String? required(String? value, [String fieldName = 'Este campo']) {
-    if (value == null || value.trim().isEmpty)
-      return '$fieldName es obligatorio';
+  static String? email(String? v, {String message = 'Correo no válido'}) {
+    if (v == null || v.trim().isEmpty) {
+      return 'Ingresa tu correo';
+    }
+    if (!v.contains('@')) {
+      return message;
+    }
     return null;
   }
 
-  static String? minLength(
-    String? value,
-    int min, [
-    String fieldName = 'Este campo',
-  ]) {
-    if (value == null) return null;
-    if (value.length < min)
-      return '$fieldName debe tener al menos $min caracteres';
+  static String? minLength(String? v, int min, {String? message}) {
+    if (v == null || v.isEmpty) {
+      return 'Campo requerido';
+    }
+    if (v.length < min) {
+      return message ?? 'Mínimo $min caracteres';
+    }
     return null;
   }
 }

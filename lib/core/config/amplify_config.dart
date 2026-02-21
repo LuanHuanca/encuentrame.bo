@@ -1,5 +1,22 @@
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
+
 import '../../amplifyconfiguration.dart';
 
-/// Carga y expone la configuración de Amplify (Cognito, API, etc.).
-/// Por ahora usa el string embebido; luego se puede cambiar por dev/prod.
-String get amplifyConfigJson => amplifyconfig;
+class AmplifyConfig {
+  AmplifyConfig._();
+
+  static bool _configured = false;
+
+  static Future<void> configure() async {
+    if (_configured) return;
+
+    try {
+      await Amplify.addPlugin(AmplifyAuthCognito());
+      await Amplify.configure(amplifyconfig);
+      _configured = true;
+    } on AmplifyAlreadyConfiguredException {
+      _configured = true;
+    }
+  }
+}
