@@ -30,6 +30,9 @@
     },
     "bedrockModelId": {
       "Type": "String"
+    },
+    "productsTable": {
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -99,6 +102,9 @@
             },
             "BEDROCK_MODEL_ID": {
               "Ref": "bedrockModelId"
+            },
+            "PRODUCTS_TABLE": {
+              "Ref": "productsTable"
             }
           }
         },

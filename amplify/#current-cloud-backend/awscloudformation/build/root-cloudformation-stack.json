@@ -305,8 +305,9 @@
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-4935624d49584c55444f-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-346d372f4a4741694377-build.zip",
           "bedrockModelId": "amazon.titan-text-lite-v1",
+          "productsTable": "products-dev",
           "env": "dev"
         }
       }
@@ -382,6 +383,20 @@
           "s3PermissionsAuthenticatedUploads": "s3:PutObject",
           "s3PermissionsGuestPublic": "DISALLOW",
           "s3PermissionsGuestUploads": "DISALLOW",
+          "env": "dev"
+        }
+      }
+    },
+    "storagedynamof7a7b9aa": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamof7a7b9aa-cloudformation-template.json",
+        "Parameters": {
+          "tableName": "products-dev",
+          "partitionKeyName": "pk",
+          "partitionKeyType": "S",
+          "sortKeyName": "sk",
+          "sortKeyType": "S",
           "env": "dev"
         }
       }

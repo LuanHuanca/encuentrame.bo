@@ -1,88 +1,71 @@
 /* eslint-disable */
-const { ok, bad, jsonBody } = require('../util/http');
-const { getUser, putUser, updateUser } = require('../util/ddb');
+const { ok, bad } = require('../util/http');
 
-function nowIso() { return new Date().toISOString(); }
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand } = require('@aws-sdk/lib-dynamodb');
 
-async function getMe({ caller }) {
-  if (!caller) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
+const USERS_TABLE = process.env.USERS_TABLE; // asegúrate de tenerla (users-dev)
 
-  // Diseño en tu tabla users-dev:
-  // pk = USER#<cognitoSub>
-  // sk = PROFILE
-  const Key = { pk: `USER#${caller.userId}`, sk: 'PROFILE' };
-  let profile = await getUser(Key);
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
+  marshallOptions: { removeUndefinedValues: true },
+});
 
-  if (!profile) {
-    profile = {
-      ...Key,
+function callerId(caller) {
+  return caller?.sub || caller?.userId || caller?.identityId || caller?.cognitoIdentityId || null;
+}
+
+function pkUser(userId) { return `USER#${userId}`; }
+
+exports.me = async ({ caller }) => {
+  const userId = callerId(caller);
+  if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+
+  // Si aún no configuraste USERS_TABLE, igual no rompas el app
+  if (!USERS_TABLE) {
+    return ok({ userId, role: '' });
+  }
+
+  const res = await ddb.send(new GetCommand({
+    TableName: USERS_TABLE,
+    Key: { pk: pkUser(userId), sk: 'PROFILE' },
+  }));
+
+  const item = res.Item || null;
+  const role = item?.role || '';
+
+  return ok({
+    userId,
+    role,
+    name: item?.name || '',
+    email: item?.email || '',
+  });
+};
+
+// (Opcional) endpoint para setear rol desde onboarding si lo quieres luego
+exports.setRole = async ({ caller, event }) => {
+  const userId = callerId(caller);
+  if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!USERS_TABLE) return bad(500, 'ENV_MISSING', 'Falta USERS_TABLE');
+
+  const body = event?.body ? JSON.parse(event.body) : {};
+  const role = String(body.role || '').trim();
+  const name = String(body.name || '').trim();
+
+  if (!role) return bad(400, 'VALIDATION', 'role requerido');
+
+  await ddb.send(new PutCommand({
+    TableName: USERS_TABLE,
+    Item: {
+      pk: pkUser(userId),
+      sk: 'PROFILE',
       entityType: 'USER',
-      userId: caller.userId,
-      email: caller.email,
-      role: null,
-      name: null,
-      phone: null,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
-    await putUser(profile);
-  }
-
-  return ok({
-    userId: profile.userId,
-    email: profile.email,
-    role: profile.role,
-    name: profile.name,
-    phone: profile.phone,
-  });
-}
-
-async function putMe({ event, caller }) {
-  if (!caller) return bad(401, 'UNAUTHORIZED', 'No autenticado');
-
-  const body = jsonBody(event);
-  const role = body.role ?? null;
-  const name = body.name ?? null;
-  const phone = body.phone ?? null;
-
-  if (role && !['VENDOR', 'BUYER'].includes(role)) {
-    return bad(400, 'VALIDATION', 'role inválido (VENDOR|BUYER)');
-  }
-
-  const Key = { pk: `USER#${caller.userId}`, sk: 'PROFILE' };
-  const updated = await updateUser({
-    Key,
-    UpdateExpression:
-      'SET #role=:role, #name=:name, #phone=:phone, #email=if_not_exists(#email,:email), #userId=if_not_exists(#userId,:userId), #updatedAt=:updatedAt, #createdAt=if_not_exists(#createdAt,:createdAt), #entityType=:entityType',
-    ExpressionAttributeNames: {
-      '#role': 'role',
-      '#name': 'name',
-      '#phone': 'phone',
-      '#email': 'email',
-      '#userId': 'userId',
-      '#updatedAt': 'updatedAt',
-      '#createdAt': 'createdAt',
-      '#entityType': 'entityType',
+      userId,
+      role,
+      name: name || null,
+      updatedAt: new Date().toISOString(),
     },
-    ExpressionAttributeValues: {
-      ':role': role,
-      ':name': name,
-      ':phone': phone,
-      ':email': caller.email,
-      ':userId': caller.userId,
-      ':updatedAt': nowIso(),
-      ':createdAt': nowIso(),
-      ':entityType': 'USER',
-    },
-  });
+  }));
 
-  return ok({
-    userId: updated.userId,
-    email: updated.email,
-    role: updated.role,
-    name: updated.name,
-    phone: updated.phone,
-  });
-}
-
-module.exports = { getMe, putMe };
+  return ok({ ok: true, role });
+};

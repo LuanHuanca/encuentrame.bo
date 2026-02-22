@@ -84,6 +84,14 @@
         }
       ]
     },
+    "AMPLIFY_function_encuentrameApi_productsTable": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
     "AMPLIFY_function_encuentrameApi_s3Key": {
       "usedBy": [
         {
@@ -119,6 +127,10 @@
       "service": "DynamoDB"
     },
     "dynamo81bc09dc": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
+    },
+    "dynamof7a7b9aa": {
       "providerPlugin": "awscloudformation",
       "service": "DynamoDB"
     },

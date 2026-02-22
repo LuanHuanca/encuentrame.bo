@@ -74,14 +74,14 @@ class _StallOpeningDetailPageState extends State<StallOpeningDetailPage> {
 
     final o = widget.opening;
     final status = (o['status'] ?? '').toString();
-
     final openedAt = _fmtDate(o['openedAt']?.toString());
     final closedAt = _fmtDate(o['closedAt']?.toString());
 
+    final items = (o['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
+    final visionOnly = (o['inventoryVisionOnly'] as List?)?.cast<dynamic>() ?? const [];
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.stallName),
-      ),
+      appBar: AppBar(title: Text(widget.stallName)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -94,13 +94,11 @@ class _StallOpeningDetailPageState extends State<StallOpeningDetailPage> {
             'Estado: ${status.isEmpty ? '—' : status}${closedAt.isEmpty ? '' : ' • Cerrado: $closedAt'}',
             style: TextStyle(color: sub),
           ),
-
           const SizedBox(height: 16),
 
           _OsmLocationCard(opening: o),
 
           const SizedBox(height: 16),
-
           Text('Imágenes', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           _ImageCard(label: 'Puesto / entorno', url: _stallPhotoUrl),
@@ -108,25 +106,18 @@ class _StallOpeningDetailPageState extends State<StallOpeningDetailPage> {
           _ImageCard(label: 'Productos (mesa)', url: _productsPhotoUrl),
 
           const SizedBox(height: 16),
-
           Text('Rekognition', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          _LabelsBlock(
-            title: 'Labels detectados',
-            labels: (o['rekognitionLabels'] as List?)?.cast<dynamic>(),
-          ),
+          _LabelsBlock(title: 'Labels detectados', labels: (o['rekognitionLabels'] as List?)?.cast<dynamic>()),
           const SizedBox(height: 10),
-          _LabelsBlock(
-            title: 'Moderación',
-            labels: (o['moderationLabels'] as List?)?.cast<dynamic>(),
-            emptyText: 'Sin alertas ✅',
-          ),
+          _LabelsBlock(title: 'Moderación', labels: (o['moderationLabels'] as List?)?.cast<dynamic>(), emptyText: 'Sin alertas ✅'),
 
           const SizedBox(height: 16),
-
           Text('Inventario', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          _InventoryBlock(items: (o['inventoryItems'] as List?)?.cast<dynamic>()),
+          _InventorySection(title: 'Confirmado (voz/texto)', items: items, empty: 'Sin items'),
+          const SizedBox(height: 10),
+          _InventorySection(title: 'Sugerido por foto', items: visionOnly, empty: 'Sin sugerencias'),
 
           const SizedBox(height: 16),
           Text('Texto original', style: TextStyle(color: title, fontSize: 14, fontWeight: FontWeight.w700)),
@@ -277,15 +268,16 @@ class _LabelsBlock extends StatelessWidget {
   }
 }
 
-class _InventoryBlock extends StatelessWidget {
-  const _InventoryBlock({required this.items});
-  final List<dynamic>? items;
+class _InventorySection extends StatelessWidget {
+  const _InventorySection({required this.title, required this.items, required this.empty});
+  final String title;
+  final List<dynamic> items;
+  final String empty;
 
   @override
   Widget build(BuildContext context) {
     final sub = AppThemeColors.subtitleColor(context);
-    final list = items ?? const [];
-    if (list.isEmpty) return Text('Sin inventario procesado.', style: TextStyle(color: sub));
+    if (items.isEmpty) return Text('$title: $empty', style: TextStyle(color: sub));
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -294,25 +286,36 @@ class _InventoryBlock extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
-        children: list.map((x) {
-          final m = (x as Map).cast<String, dynamic>();
-          final name = (m['name'] ?? '').toString();
-          final qty = (m['qty'] ?? '').toString();
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          ...items.map((x) {
+            final m = (x as Map).cast<String, dynamic>();
+            final display = (m['display'] ?? m['canonical'] ?? 'Producto').toString();
+            final qty = (m['qty'] ?? 1).toString();
+            final unit = (m['unit'] ?? 'unidad').toString();
+            final conf = (m['confidence'] ?? '').toString();
+            final ev = (m['evidence'] is Map) ? (m['evidence'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+            final vision = (ev['vision'] as List?)?.cast<dynamic>() ?? const [];
+            final suggested = m['suggested'] == true;
 
-          final matched = (m['matchedLabels'] as List?)?.cast<dynamic>() ?? const [];
-          final score = (m['consensusScore'] ?? '').toString();
+            final meta = <String>[];
+            meta.add('x$qty $unit');
+            if (conf.isNotEmpty) meta.add('conf: $conf');
+            if (vision.isNotEmpty) meta.add('foto: ${vision.take(3).join(', ')}');
+            if (suggested) meta.add('sugerido');
 
-          final subtitle = <String>[];
-          if (matched.isNotEmpty) subtitle.add('match: ${matched.join(', ')}');
-          if (score.isNotEmpty) subtitle.add('score: $score');
-
-          return ListTile(
-            dense: true,
-            title: Text(name),
-            subtitle: subtitle.isEmpty ? null : Text(subtitle.join(' • ')),
-            trailing: Text('x$qty'),
-          );
-        }).toList(),
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(suggested ? Icons.lightbulb_outline : Icons.check_circle_outline),
+              title: Text(display),
+              subtitle: Text(meta.join(' • ')),
+              trailing: Text('x$qty'),
+            );
+          }),
+        ],
       ),
     );
   }

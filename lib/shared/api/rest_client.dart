@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:amplify_api/amplify_api.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
 class ApiClientException implements Exception {
@@ -54,10 +53,7 @@ class RestClient {
     }
   }
 
-  Future<Map<String, dynamic>> post(
-      String path,
-      Map<String, dynamic> body,
-      ) async {
+  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
     try {
       final op = Amplify.API.post(
         _path(path),
@@ -75,10 +71,7 @@ class RestClient {
     }
   }
 
-  Future<Map<String, dynamic>> put(
-      String path,
-      Map<String, dynamic> body,
-      ) async {
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
     try {
       final op = Amplify.API.put(
         _path(path),
@@ -116,17 +109,13 @@ class RestClient {
   Map<String, dynamic> _handle(int statusCode, String raw) {
     Map<String, dynamic> json;
     try {
-      json = raw.isEmpty
-          ? <String, dynamic>{}
-          : (jsonDecode(raw) as Map<String, dynamic>);
+      json = raw.isEmpty ? <String, dynamic>{} : (jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
       json = {'raw': raw};
     }
 
     if (statusCode >= 400) {
-      final err = (json['error'] is Map)
-          ? (json['error'] as Map).cast<String, dynamic>()
-          : null;
+      final err = (json['error'] is Map) ? (json['error'] as Map).cast<String, dynamic>() : null;
       throw ApiClientException(
         err?['message']?.toString() ?? 'HTTP $statusCode',
         statusCode: statusCode,

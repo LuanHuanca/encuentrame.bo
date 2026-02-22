@@ -1,4 +1,3 @@
-import 'package:encuentrame/features/stalls/presentation/pages/stall_openings_page.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme.dart';
@@ -6,6 +5,8 @@ import '../../../../shared/api/rest_client.dart';
 import 'open_stall_page.dart';
 import 'stall_dashboard_page.dart';
 import 'stall_form_page.dart';
+import 'stall_openings_page.dart';
+import 'stall_products_page.dart';
 
 class MyStallsPage extends StatefulWidget {
   const MyStallsPage({super.key});
@@ -146,7 +147,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
             : Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Administra tus puestos: abre, cierra, edita y listo.', style: TextStyle(color: sub)),
+            Text('Administra tus puestos: abre, cierra, historial y productos.', style: TextStyle(color: sub)),
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -189,18 +190,6 @@ class _MyStallsPageState extends State<MyStallsPage> {
                             runSpacing: 8,
                             children: [
                               FilledButton.tonal(
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => StallOpeningsPage(
-                                      stallId: stallId,
-                                      stallName: stallName,
-                                    ),
-                                  ),
-                                ),
-                                child: const Text('Historial'),
-                              ),
-                              FilledButton.tonal(
                                 onPressed: (!isOpen && stallId.isNotEmpty)
                                     ? () async {
                                   await Navigator.push(
@@ -218,6 +207,30 @@ class _MyStallsPageState extends State<MyStallsPage> {
                                 child: const Text('Abrir hoy'),
                               ),
                               FilledButton.tonal(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => StallOpeningsPage(
+                                      stallId: stallId,
+                                      stallName: stallName,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text('Historial'),
+                              ),
+                              FilledButton.tonal(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => StallProductsPage(
+                                      stallId: stallId,
+                                      stallName: stallName,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text('Productos'),
+                              ),
+                              OutlinedButton(
                                 onPressed: isOpen
                                     ? () => Navigator.push(
                                   context,
@@ -228,8 +241,16 @@ class _MyStallsPageState extends State<MyStallsPage> {
                                     ),
                                   ),
                                 )
-                                    : null,
-                                child: const Text('Dashboard'),
+                                    : () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => StallOpeningsPage(
+                                      stallId: stallId,
+                                      stallName: stallName,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(isOpen ? 'Dashboard' : 'Ver último'),
                               ),
                               OutlinedButton(
                                 onPressed: isOpen ? () => _close(s) : null,

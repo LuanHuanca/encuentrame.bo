@@ -13,13 +13,19 @@ const {
   BatchGetCommand
 } = require('@aws-sdk/lib-dynamodb');
 
-const { RekognitionClient, DetectLabelsCommand, DetectModerationLabelsCommand } = require('@aws-sdk/client-rekognition');
+const {
+  RekognitionClient,
+  DetectLabelsCommand,
+  DetectModerationLabelsCommand
+} = require('@aws-sdk/client-rekognition');
+
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
 const BUCKET_NAME = process.env.BUCKET_NAME;
 const STALLS_TABLE = process.env.STALLS_TABLE;
 const OPENINGLOGS_TABLE = process.env.OPENINGLOGS_TABLE;
+const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || '';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
@@ -31,11 +37,24 @@ const bedrock = new BedrockRuntimeClient({ region: REGION });
 function jsonBody(event) { try { return event.body ? JSON.parse(event.body) : {}; } catch { return {}; } }
 function nowIso() { return new Date().toISOString(); }
 function uuid() { return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'); }
-function callerId(caller) { return caller?.sub || caller?.userId || caller?.identityId || caller?.cognitoIdentityId || null; }
+
+// IAM: cognitoIdentityId / identityId
+// User Pools: sub
+function callerId(caller) {
+  return (
+    caller?.sub ||
+    caller?.userId ||
+    caller?.identityId ||
+    caller?.cognitoIdentityId ||
+    caller?._identity?.cognitoIdentityId ||
+    null
+  );
+}
 
 function pkStall(stallId) { return `STALL#${stallId}`; }
 function pkUser(userId) { return `USER#${userId}`; }
 function skStall(stallId) { return `STALL#${stallId}`; }
+function skProd(productId) { return `PROD#${productId}`; }
 
 async function assertOwnsStall(userId, stallId) {
   const res = await ddb.send(new GetCommand({
@@ -45,36 +64,120 @@ async function assertOwnsStall(userId, stallId) {
   return !!res.Item;
 }
 
-async function detectProductsLabels(productsPhotoKey) {
-  const out = await rek.send(new DetectLabelsCommand({
-    Image: { S3Object: { Bucket: BUCKET_NAME, Name: productsPhotoKey } },
-    MaxLabels: 20,
-    MinConfidence: 70
-  }));
-  return (out.Labels || []).map(l => ({
-    name: l.Name,
-    confidence: Math.round((l.Confidence || 0) * 10) / 10
-  }));
+/* =========================
+   S3 key normalization (fix public/public etc.)
+========================= */
+
+function normalizeS3Key(k) {
+  let key = String(k || '').trim();
+  if (!key) return key;
+  if (key.startsWith('/')) key = key.slice(1);
+  key = key.replace(/\/{2,}/g, '/'); // collapse //
+  if (key.startsWith('public/public/')) key = key.replace('public/public/', 'public/');
+  return key;
 }
 
-async function detectModeration(stallPhotoKey) {
-  const out = await rek.send(new DetectModerationLabelsCommand({
-    Image: { S3Object: { Bucket: BUCKET_NAME, Name: stallPhotoKey } },
-    MinConfidence: 70
-  }));
-  return (out.ModerationLabels || []).map(l => ({
-    name: l.Name,
-    confidence: Math.round((l.Confidence || 0) * 10) / 10
-  }));
+function candidateKeys(k) {
+  const key = normalizeS3Key(k);
+  const out = [];
+  const push = (x) => { if (x && !out.includes(x)) out.push(x); };
+
+  push(key);
+
+  // si el key vino como "vendor/x.jpg" pero el bucket lo guarda como public/vendor/...
+  if (!key.startsWith('public/')) push(`public/${key}`);
+
+  // si el key vino como public/vendor/... pero Amplify lo guardó como public/public/vendor/...
+  if (key.startsWith('public/')) push(`public/public/${key.slice('public/'.length)}`);
+
+  // si el key vino como public/public/... pero en realidad era public/...
+  if (key.startsWith('public/public/')) push(key.replace('public/public/', 'public/'));
+
+  return out.slice(0, 4);
 }
+
+function isResourceNotFound(e) {
+  return e?.name === 'ResourceNotFoundException' || e?.$metadata?.httpStatusCode === 404;
+}
+
+function awsDetails(e) {
+  return {
+    name: e?.name,
+    message: e?.message,
+    status: e?.$metadata?.httpStatusCode
+  };
+}
+
+/* =========================
+   Rekognition with fallback keys
+========================= */
+
+async function detectProductsLabelsWithKey(productsPhotoKey) {
+  const tries = candidateKeys(productsPhotoKey);
+  let lastErr;
+
+  for (const k of tries) {
+    try {
+      const out = await rek.send(new DetectLabelsCommand({
+        Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
+        MaxLabels: 25,
+        MinConfidence: 70
+      }));
+
+      const labels = (out.Labels || []).map(l => ({
+        name: l.Name,
+        confidence: Math.round((l.Confidence || 0) * 10) / 10
+      }));
+
+      return { labels, keyUsed: k };
+    } catch (e) {
+      lastErr = e;
+      if (isResourceNotFound(e)) continue;
+      throw e;
+    }
+  }
+
+  throw lastErr;
+}
+
+async function detectModerationWithKey(stallPhotoKey) {
+  const tries = candidateKeys(stallPhotoKey);
+  let lastErr;
+
+  for (const k of tries) {
+    try {
+      const out = await rek.send(new DetectModerationLabelsCommand({
+        Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
+        MinConfidence: 70
+      }));
+
+      const moderation = (out.ModerationLabels || []).map(l => ({
+        name: l.Name,
+        confidence: Math.round((l.Confidence || 0) * 10) / 10
+      }));
+
+      return { moderation, keyUsed: k };
+    } catch (e) {
+      lastErr = e;
+      if (isResourceNotFound(e)) continue;
+      throw e;
+    }
+  }
+
+  throw lastErr;
+}
+
+/* =========================
+   Inventory: normalization + reconciliation
+========================= */
 
 function fallbackInventoryParse(raw) {
   const parts = raw.split(',').map(x => x.trim()).filter(Boolean);
   const items = [];
   for (const p of parts) {
     const m = p.match(/^(\d+)\s+(.*)$/);
-    if (m) items.push({ name: m[2].trim(), qty: Number(m[1]), color: null, size: null, price: null, tags: [] });
-    else items.push({ name: p, qty: 1, color: null, size: null, price: null, tags: [] });
+    if (m) items.push({ canonical: m[2].trim(), display: m[2].trim(), qty: Number(m[1]), unit: 'unidad', category: null, tags: [], suggested: false });
+    else items.push({ canonical: p, display: p, qty: 1, unit: 'unidad', category: null, tags: [], suggested: false });
   }
   return { items };
 }
@@ -87,54 +190,163 @@ function extractJson(text) {
   return null;
 }
 
-const LABEL_SYNONYMS = [
-  { label: 'Shoe', words: ['zapato', 'zapatos', 'bota', 'botas', 'calzado'] },
-  { label: 'Clothing', words: ['ropa', 'polera', 'poleras', 'camiseta', 'camisetas', 'pantalón', 'pantalones'] },
-  { label: 'Food', words: ['comida', 'tomate', 'tomates', 'fruta', 'verdura', 'verduras'] },
-  { label: 'Bottle', words: ['desodorante', 'perfume', 'spray'] },
+const VISION_STOP_LABELS = new Set([
+  'Person','Human','Face','Man','Woman','Kid','Child','People','Adult','Smile','Head','Hand','Finger'
+]);
+
+const CANON_MAP = [
+  ['tomatodo', 'botella'],
+  ['termo', 'botella'],
+  ['camiseta', 'polera'],
+  ['camisetas', 'polera'],
+  ['poleras', 'polera'],
+  ['lentes', 'gafas de sol'],
+  ['lentes de sol', 'gafas de sol'],
+  ['gafas', 'gafas de sol'],
 ];
 
-function matchLabelsForItem(itemName, labels) {
-  const name = (itemName || '').toLowerCase();
+const LABEL_SYNONYMS = [
+  { label: 'Bottle', words: ['botella','tomatodo','termo','vaso','shaker'] },
+  { label: 'Clothing', words: ['ropa','polera','camiseta','pantalón','pantalones'] },
+  { label: 'Sunglasses', words: ['gafas de sol','lentes de sol'] },
+  { label: 'Plate', words: ['plato','platos'] },
+  { label: 'Deodorant', words: ['desodorante'] },
+];
+
+function normalizeCanonical(s) {
+  const x = (s || '').toLowerCase().trim();
+  if (!x) return '';
+  for (const [a,b] of CANON_MAP) {
+    if (x === a) return b;
+  }
+  return x;
+}
+
+function isNonProduct(canonical) {
+  const x = (canonical || '').toLowerCase();
+  return ['hombre','mujer','persona','personas','gente','niño','niña','adulto','adultos'].includes(x);
+}
+
+function labelMatchesItem(canonical, labels) {
+  const name = canonical.toLowerCase();
   const matched = [];
 
-  for (const l of (labels || [])) {
+  const labelsFiltered = (labels || []).filter(l => l?.name && !VISION_STOP_LABELS.has(l.name));
+
+  for (const l of labelsFiltered) {
     const ln = (l.name || '').toLowerCase();
-    if (ln && name.includes(ln)) matched.push(l.name);
+    if (!ln) continue;
+    if (name.includes(ln) || ln.includes(name)) matched.push(l.name);
   }
 
   for (const map of LABEL_SYNONYMS) {
-    if (map.words.some(w => name.includes(w.toLowerCase()))) matched.push(map.label);
+    if (map.words.some(w => name.includes(w))) matched.push(map.label);
   }
 
   return [...new Set(matched)];
 }
 
-function addConsensus(items, labels) {
-  return (items || []).map(it => {
-    const matched = matchLabelsForItem(it.name, labels);
-    const score = matched.length > 0 ? 0.9 : 0.6;
-    return { ...it, matchedLabels: matched, consensusScore: score };
-  });
+function reconcileInventory(itemsFromText, labels) {
+  const out = [];
+  const seen = new Map(); // canonical -> index
+
+  for (const it of (itemsFromText || [])) {
+    const canonical = normalizeCanonical(it.canonical || it.name || '');
+    if (!canonical || isNonProduct(canonical)) continue;
+
+    const qty = Math.max(1, Number(it.qty || 1));
+    const matched = labelMatchesItem(canonical, labels);
+
+    const confBase = (it.suggested === true) ? 0.60 : 0.78;
+    const conf = Math.min(0.95, confBase + (matched.length ? 0.14 : 0));
+
+    const obj = {
+      canonical,
+      display: it.display || canonical,
+      qty,
+      unit: it.unit ?? 'unidad',
+      category: it.category ?? (matched[0] ?? null),
+      tags: it.tags ?? [],
+      evidence: { text: true, vision: matched },
+      confidence: Number(conf.toFixed(2)),
+      suggested: false
+    };
+
+    if (!seen.has(canonical)) {
+      seen.set(canonical, out.length);
+      out.push(obj);
+    } else {
+      const idx = seen.get(canonical);
+      out[idx].qty += qty;
+      out[idx].confidence = Math.max(out[idx].confidence, obj.confidence);
+      out[idx].evidence.vision = [...new Set([...out[idx].evidence.vision, ...matched])];
+    }
+  }
+
+  const visionOnly = [];
+  const alreadyVision = new Set(out.flatMap(x => x.evidence.vision || []));
+  for (const l of (labels || [])) {
+    if (!l?.name) continue;
+    if (VISION_STOP_LABELS.has(l.name)) continue;
+    if (alreadyVision.has(l.name)) continue;
+
+    const ln = l.name.toLowerCase();
+    if (['clothing','food','product','object','indoor','room'].includes(ln)) continue;
+
+    visionOnly.push({
+      canonical: normalizeCanonical(l.name),
+      display: l.name,
+      qty: 1,
+      unit: 'unidad',
+      category: l.name,
+      tags: [],
+      evidence: { text: false, vision: [l.name] },
+      confidence: 0.65,
+      suggested: true
+    });
+  }
+
+  return { items: out, visionOnly };
 }
+
+/* =========================
+   Bedrock inventory extraction
+========================= */
 
 async function bedrockInventory(rawText, labels) {
   if (!BEDROCK_MODEL_ID) return null;
 
   const prompt =
-`Extrae inventario desde texto en español y usa los labels de Rekognition como evidencia.
-Devuelve SOLO JSON válido con este formato:
+`Eres un extractor de inventario para un puesto de venta en Bolivia.
+Entrada: texto hablado (español) + labels de Rekognition (evidencia visual).
+Objetivo: devolver un inventario estructurado y fácil de entender.
 
+REGLAS:
+- Devuelve SOLO JSON válido, sin explicación.
+- Si el texto dice cantidades (ej "10 poleras"), respétalas aunque no se vean en la foto.
+- Normaliza nombres: "tomatodo" -> "botella", "polera/camiseta" -> "polera", "gafas de sol/lentes" -> "gafas de sol".
+- No inventes productos. Si aparece solo en labels, NO lo metas como item confirmado.
+- Si en el texto aparece "hombre/persona", NO lo trates como producto.
+
+FORMATO:
 {
   "items":[
-    {"name":string,"qty":number,"color":string|null,"size":string|null,"price":number|null,"tags":string[]}
+    {
+      "canonical": string,
+      "display": string,
+      "qty": number,
+      "unit": "unidad"|"par"|"paquete"|null,
+      "category": string|null,
+      "tags": string[],
+      "suggested": boolean
+    }
   ]
 }
 
 Texto:
-"${rawText}"
+"""${rawText}"""
 
-Labels:
+Labels (Rekognition):
 ${JSON.stringify(labels || [])}
 `;
 
@@ -143,11 +355,11 @@ ${JSON.stringify(labels || [])}
   const body = isTitan
     ? JSON.stringify({
         inputText: prompt,
-        textGenerationConfig: { maxTokenCount: 500, temperature: 0, topP: 1 }
+        textGenerationConfig: { maxTokenCount: 700, temperature: 0, topP: 1 }
       })
     : JSON.stringify({
         anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 500,
+        max_tokens: 700,
         temperature: 0,
         messages: [{ role: 'user', content: prompt }]
       });
@@ -162,7 +374,10 @@ ${JSON.stringify(labels || [])}
   const raw = Buffer.from(res.body).toString('utf8');
   const parsed = JSON.parse(raw);
 
-  const outText = isTitan ? (parsed?.results?.[0]?.outputText || '') : (parsed?.content?.[0]?.text || '');
+  const outText = isTitan
+    ? (parsed?.results?.[0]?.outputText || '')
+    : (parsed?.content?.[0]?.text || '');
+
   const jsonStr = extractJson(outText);
   if (!jsonStr) return null;
 
@@ -176,7 +391,57 @@ ${JSON.stringify(labels || [])}
 }
 
 /* =========================
-   CRUD: stalls
+   Products upsert (catalog per stall)
+========================= */
+
+async function upsertProductsFromInventory({ stallId, items, now }) {
+  if (!PRODUCTS_TABLE) return;
+  if (!items || !items.length) return;
+
+  const slug = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9\-áéíóúñ]/g, '')
+      .slice(0, 64);
+
+  for (const it of items) {
+    const productId = slug(it.canonical);
+    if (!productId) continue;
+
+    await ddb.send(new UpdateCommand({
+      TableName: PRODUCTS_TABLE,
+      Key: { pk: pkStall(stallId), sk: skProd(productId) },
+      UpdateExpression: `
+        SET entityType = if_not_exists(entityType, :type),
+            productId = if_not_exists(productId, :pid),
+            canonical = if_not_exists(canonical, :canon),
+            #display = if_not_exists(#display, :display),
+            category = if_not_exists(category, :cat),
+            tags = if_not_exists(tags, :tags),
+            active = if_not_exists(active, :active),
+            lastQty = :lastQty,
+            lastSeenAt = :lastSeenAt
+      `,
+      ExpressionAttributeNames: { '#display': 'display' },
+      ExpressionAttributeValues: {
+        ':type': 'PRODUCT',
+        ':pid': productId,
+        ':canon': it.canonical,
+        ':display': it.display || it.canonical,
+        ':cat': it.category ?? null,
+        ':tags': it.tags ?? [],
+        ':active': true,
+        ':lastQty': it.qty ?? 1,
+        ':lastSeenAt': now
+      }
+    }));
+  }
+}
+
+/* =========================
+   CRUD: stalls (igual que tenías)
 ========================= */
 
 async function list({ caller }) {
@@ -201,7 +466,6 @@ async function list({ caller }) {
 
   const keys = links.map(s => ({ pk: pkStall(s.stallId), sk: 'PROFILE' }));
 
-  // BatchGet con reintento por UnprocessedKeys (MVP robusto)
   let requestItems = { [STALLS_TABLE]: { Keys: keys } };
   const profiles = [];
 
@@ -342,9 +606,7 @@ async function remove({ stallId, caller }) {
   const stall = prof.Item || null;
   if (!stall) return bad(404, 'NOT_FOUND', 'Puesto no existe');
 
-  if (stall.currentOpen) {
-    return bad(400, 'STALL_OPEN', 'Cierra el puesto antes de eliminar');
-  }
+  if (stall.currentOpen) return bad(400, 'STALL_OPEN', 'Cierra el puesto antes de eliminar');
 
   await ddb.send(new DeleteCommand({
     TableName: STALLS_TABLE,
@@ -368,7 +630,9 @@ async function open({ event, caller }) {
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
   if (!STALLS_TABLE || !OPENINGLOGS_TABLE || !BUCKET_NAME) {
-    return bad(500, 'ENV_MISSING', 'Faltan env vars (tables/bucket)');
+    return bad(500, 'ENV_MISSING', 'Faltan env vars (tables/bucket)', JSON.stringify({
+      STALLS_TABLE, OPENINGLOGS_TABLE, BUCKET_NAME
+    }));
   }
 
   const body = jsonBody(event);
@@ -385,9 +649,21 @@ async function open({ event, caller }) {
   const lng = Number(body.lng);
   const accuracy = Number(body.accuracy || 0);
 
-  const stallPhotoKey = body.stallPhotoKey;
-  const productsPhotoKey = body.productsPhotoKey;
+  // ✅ normalize keys aquí
+  let stallPhotoKey = normalizeS3Key(body.stallPhotoKey);
+  let productsPhotoKey = normalizeS3Key(body.productsPhotoKey);
   const inventoryText = String(body.inventoryText || '').trim();
+
+  console.log('OPEN keys/env', {
+    stallId,
+    BUCKET_NAME,
+    STALLS_TABLE,
+    OPENINGLOGS_TABLE,
+    PRODUCTS_TABLE,
+    BEDROCK_MODEL_ID,
+    stallPhotoKey,
+    productsPhotoKey
+  });
 
   if (!stallPhotoKey || !productsPhotoKey) return bad(400, 'MISSING_PHOTOS', 'Faltan fotos');
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return bad(400, 'MISSING_LOCATION', 'Falta ubicación');
@@ -396,18 +672,54 @@ async function open({ event, caller }) {
   const now = nowIso();
   const openSk = `OPEN#${now}#${uuid()}`;
 
-  const [labels, moderation] = await Promise.all([
-    detectProductsLabels(productsPhotoKey),
-    detectModeration(stallPhotoKey)
-  ]);
+  let labels = [];
+  let moderation = [];
+
+  try {
+    const [labelsRes, modRes] = await Promise.all([
+      detectProductsLabelsWithKey(productsPhotoKey),
+      detectModerationWithKey(stallPhotoKey)
+    ]);
+
+    labels = labelsRes.labels;
+    moderation = modRes.moderation;
+
+    // ✅ guarda el key que realmente existe
+    productsPhotoKey = labelsRes.keyUsed;
+    stallPhotoKey = modRes.keyUsed;
+  } catch (e) {
+    console.log('REKOGNITION_ERROR', awsDetails(e));
+
+    if (isResourceNotFound(e)) {
+      return bad(
+        400,
+        'PHOTO_NOT_FOUND',
+        'No se encontró la foto en S3 (key incorrecto)',
+        JSON.stringify({ stallPhotoKey, productsPhotoKey, bucket: BUCKET_NAME, err: awsDetails(e) })
+      );
+    }
+
+    return bad(500, 'REKOGNITION_ERROR', 'Error en Rekognition', JSON.stringify(awsDetails(e)));
+  }
 
   const flagged = (moderation || []).length > 0;
 
   let inv = null;
-  try { inv = await bedrockInventory(inventoryText, labels); } catch (_) { inv = null; }
+  try {
+    inv = await bedrockInventory(inventoryText, labels);
+  } catch (e) {
+    console.log('BEDROCK_ERROR (fallback to parser)', awsDetails(e));
+    inv = null;
+  }
   if (!inv) inv = fallbackInventoryParse(inventoryText);
 
-  const invWithConsensus = addConsensus(inv.items, labels);
+  const reconciled = reconcileInventory(inv.items, labels);
+
+  try {
+    await upsertProductsFromInventory({ stallId, items: reconciled.items, now });
+  } catch (e) {
+    console.log('UPSERT_PRODUCTS_ERROR (ignored for MVP)', awsDetails(e));
+  }
 
   await ddb.send(new UpdateCommand({
     TableName: STALLS_TABLE,
@@ -431,7 +743,8 @@ async function open({ event, caller }) {
       rekognitionLabels: labels,
       moderationLabels: moderation,
       inventoryRaw: inventoryText,
-      inventoryItems: invWithConsensus
+      inventoryItems: reconciled.items,
+      inventoryVisionOnly: reconciled.visionOnly
     }
   }));
 
@@ -441,7 +754,10 @@ async function open({ event, caller }) {
     status: flagged ? 'REVIEW' : 'OPEN',
     labels,
     moderation,
-    inventory: { items: invWithConsensus }
+    inventory: {
+      items: reconciled.items,
+      visionOnly: reconciled.visionOnly
+    }
   });
 }
 
@@ -560,7 +876,7 @@ module.exports = {
   create,
   get,
   update,
-  remove, // 👈 nuevo
+  remove,
   open,
   getCurrent,
   close,

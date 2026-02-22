@@ -1,8 +1,10 @@
 /* Amplify Params - DO NOT EDIT
 	ENV
 	REGION
-Amplify Params - DO NOT EDIT *//* eslint-disable */
+Amplify Params - DO NOT EDIT */
+/* eslint-disable */
 const { route } = require('./router');
+const { corsHeaders } = require('./util/http');
 
 exports.handler = async (event) => {
   try {
@@ -16,11 +18,3 @@ exports.handler = async (event) => {
     };
   }
 };
-
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
-  };
-}

@@ -80,10 +80,10 @@ const amplifyconfig = '''{
                 "sortKeyName": "sk",
                 "sortKeyType": "S",
                 "region": "us-east-1",
-                "arn": "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev",
-                "streamArn": "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev/stream/2026-02-21T16:03:33.937",
+                "arn": "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev-dev",
+                "streamArn": "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev-dev/stream/2026-02-22T01:54:39.573",
                 "partitionKeyType": "S",
-                "name": "openinglogs-dev"
+                "name": "products-dev-dev"
             },
             "awsS3StoragePlugin": {
                 "bucket": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",

@@ -49,9 +49,10 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
     });
 
     try {
-      final res = await _api.get('/stalls/${widget.stallId}/openings', queryParameters: {
-        'limit': '50',
-      });
+      final res = await _api.get(
+        '/stalls/${widget.stallId}/openings',
+        queryParameters: {'limit': '50'},
+      );
 
       final list = (res['openings'] as List?)?.cast<dynamic>() ?? const [];
       _openings = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
@@ -92,7 +93,6 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, i) {
             final o = _openings[i];
-
             final status = (o['status'] ?? '').toString();
             final openedAt = _fmtDate(o['openedAt']?.toString());
             final closedAt = _fmtDate(o['closedAt']?.toString());
@@ -108,10 +108,7 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
                         Expanded(
                           child: Text(
                             openedAt.isEmpty ? 'Apertura' : openedAt,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: title,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w800, color: title),
                           ),
                         ),
                         Chip(label: Text(status.isEmpty ? '—' : status)),

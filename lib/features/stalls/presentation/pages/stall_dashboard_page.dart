@@ -40,9 +40,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
 
   Future<String?> _getUrl(String key) async {
     try {
-      final res = await Amplify.Storage.getUrl(
-        path: StoragePath.fromString(key),
-      ).result;
+      final res = await Amplify.Storage.getUrl(path: StoragePath.fromString(key)).result;
       return res.url.toString();
     } catch (_) {
       return null;
@@ -92,7 +90,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     try {
       await _api.post('/stalls/${widget.stallId}/close', {});
       if (!mounted) return;
-      Navigator.pop(context); // vuelve a lista
+      Navigator.pop(context);
     } on ApiClientException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -105,36 +103,24 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     final title = AppThemeColors.titleColor(context);
     final sub = AppThemeColors.subtitleColor(context);
 
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    final opening = _opening;
+    final items = (opening?['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
+    final visionOnly = (opening?['inventoryVisionOnly'] as List?)?.cast<dynamic>() ?? const [];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.stallName.isEmpty ? 'Mi Puesto' : widget.stallName),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          if (_opening != null) IconButton(onPressed: _close, icon: const Icon(Icons.stop_circle)),
+          if (opening != null) IconButton(onPressed: _close, icon: const Icon(Icons.stop_circle)),
         ],
       ),
       body: _error != null
-          ? Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(_error!, style: const TextStyle(color: Colors.red)),
-        ),
-      )
-          : _opening == null
-          ? Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Este puesto aún no está abierto hoy.',
-            style: TextStyle(color: sub),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      )
+          ? Center(child: Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: const TextStyle(color: Colors.red))))
+          : opening == null
+          ? Center(child: Padding(padding: const EdgeInsets.all(16), child: Text('Este puesto no está abierto hoy.', style: TextStyle(color: sub))))
           : ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -144,12 +130,12 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Estado: ${_opening?['status'] ?? 'OPEN'} • ${_opening?['openedAt'] ?? ''}',
+            'Estado: ${opening['status'] ?? 'OPEN'} • ${opening['openedAt'] ?? ''}',
             style: TextStyle(color: sub),
           ),
           const SizedBox(height: 16),
 
-          _OsmLocationCard(opening: _opening!),
+          _OsmLocationCard(opening: opening),
 
           const SizedBox(height: 16),
           Text('Imágenes', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
@@ -161,21 +147,24 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
           const SizedBox(height: 16),
           Text('Rekognition', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          _LabelsBlock(
-            title: 'Labels detectados',
-            labels: (_opening?['rekognitionLabels'] as List?)?.cast<dynamic>(),
-          ),
+          _LabelsBlock(title: 'Labels detectados', labels: (opening['rekognitionLabels'] as List?)?.cast<dynamic>()),
           const SizedBox(height: 10),
           _LabelsBlock(
             title: 'Moderación',
-            labels: (_opening?['moderationLabels'] as List?)?.cast<dynamic>(),
+            labels: (opening['moderationLabels'] as List?)?.cast<dynamic>(),
             emptyText: 'Sin alertas ✅',
           ),
 
           const SizedBox(height: 16),
-          Text('Inventario del día', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
+          Text('Inventario', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          _InventoryBlock(items: (_opening?['inventoryItems'] as List?)?.cast<dynamic>()),
+          _InventorySection(title: 'Confirmado (voz/texto)', items: items, empty: 'Sin items'),
+          const SizedBox(height: 10),
+          _InventorySection(title: 'Sugerido por foto', items: visionOnly, empty: 'Sin sugerencias'),
+          const SizedBox(height: 16),
+          Text('Texto original', style: TextStyle(color: title, fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text((opening['inventoryRaw'] ?? '').toString(), style: TextStyle(color: sub)),
         ],
       ),
     );
@@ -201,29 +190,20 @@ class _OsmLocationCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: AppThemeColors.inputFill(context), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Ubicación', style: TextStyle(color: title, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text(
-            'lat ${lat.toStringAsFixed(6)} • lng ${lng.toStringAsFixed(6)} • ±${(acc ?? 0).toStringAsFixed(0)}m',
-            style: TextStyle(color: sub),
-          ),
+          Text('lat ${lat.toStringAsFixed(6)} • lng ${lng.toStringAsFixed(6)} • ±${(acc ?? 0).toStringAsFixed(0)}m', style: TextStyle(color: sub)),
           const SizedBox(height: 10),
           SizedBox(
             height: 220,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: FlutterMap(
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: 16,
-                ),
+                options: MapOptions(initialCenter: center, initialZoom: 16),
                 children: [
                   TileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -231,12 +211,7 @@ class _OsmLocationCard extends StatelessWidget {
                   ),
                   MarkerLayer(
                     markers: [
-                      Marker(
-                        point: center,
-                        width: 40,
-                        height: 40,
-                        child: const Icon(Icons.location_pin, size: 40),
-                      ),
+                      Marker(point: center, width: 40, height: 40, child: const Icon(Icons.location_pin, size: 40)),
                     ],
                   ),
                 ],
@@ -261,10 +236,7 @@ class _ImageCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: AppThemeColors.inputFill(context), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -273,10 +245,7 @@ class _ImageCard extends StatelessWidget {
           if (url == null)
             Text('No disponible', style: TextStyle(color: sub))
           else
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(url!, height: 180, width: double.infinity, fit: BoxFit.cover),
-            ),
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(url!, height: 180, width: double.infinity, fit: BoxFit.cover)),
         ],
       ),
     );
@@ -299,10 +268,7 @@ class _LabelsBlock extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: AppThemeColors.inputFill(context), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -324,42 +290,56 @@ class _LabelsBlock extends StatelessWidget {
   }
 }
 
-class _InventoryBlock extends StatelessWidget {
-  const _InventoryBlock({required this.items});
-  final List<dynamic>? items;
+class _InventorySection extends StatelessWidget {
+  const _InventorySection({
+    required this.title,
+    required this.items,
+    required this.empty,
+  });
+
+  final String title;
+  final List<dynamic> items;
+  final String empty;
 
   @override
   Widget build(BuildContext context) {
     final sub = AppThemeColors.subtitleColor(context);
-    final list = items ?? const [];
-    if (list.isEmpty) return Text('Aún no hay inventario procesado.', style: TextStyle(color: sub));
+    if (items.isEmpty) return Text('$title: $empty', style: TextStyle(color: sub));
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: AppThemeColors.inputFill(context), borderRadius: BorderRadius.circular(14)),
       child: Column(
-        children: list.map((x) {
-          final m = (x as Map).cast<String, dynamic>();
-          final name = (m['name'] ?? '').toString();
-          final qty = (m['qty'] ?? '').toString();
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          ...items.map((x) {
+            final m = (x as Map).cast<String, dynamic>();
+            final display = (m['display'] ?? m['canonical'] ?? 'Producto').toString();
+            final qty = (m['qty'] ?? 1).toString();
+            final unit = (m['unit'] ?? 'unidad').toString();
+            final conf = (m['confidence'] ?? '').toString();
+            final ev = (m['evidence'] is Map) ? (m['evidence'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+            final vision = (ev['vision'] as List?)?.cast<dynamic>() ?? const [];
+            final suggested = m['suggested'] == true;
 
-          final matched = (m['matchedLabels'] as List?)?.cast<dynamic>() ?? const [];
-          final score = (m['consensusScore'] ?? '').toString();
+            final meta = <String>[];
+            meta.add('x$qty $unit');
+            if (conf.isNotEmpty) meta.add('conf: $conf');
+            if (vision.isNotEmpty) meta.add('foto: ${vision.take(3).join(', ')}');
+            if (suggested) meta.add('sugerido');
 
-          final subtitle = <String>[];
-          if (matched.isNotEmpty) subtitle.add('match: ${matched.join(', ')}');
-          if (score.isNotEmpty) subtitle.add('score: $score');
-
-          return ListTile(
-            dense: true,
-            title: Text(name),
-            subtitle: subtitle.isEmpty ? null : Text(subtitle.join(' • ')),
-            trailing: Text('x$qty'),
-          );
-        }).toList(),
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(suggested ? Icons.lightbulb_outline : Icons.check_circle_outline),
+              title: Text(display),
+              subtitle: Text(meta.join(' • ')),
+              trailing: Text('x$qty'),
+            );
+          }),
+        ],
       ),
     );
   }

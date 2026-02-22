@@ -32,7 +32,7 @@
         "RootUrl": "https://emt1twi7p5.execute-api.us-east-1.amazonaws.com/dev",
         "ApiId": "emt1twi7p5"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.683Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.013Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/apic45634fb-cloudformation-template.json",
         "logicalId": "apiapic45634fb"
@@ -74,7 +74,7 @@
         "IdentityPoolName": "encuentrameboed4663da_identitypool_ed4663da__dev",
         "UserPoolName": "encuentrameboed4663da_userpool_ed4663da"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.685Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.016Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/auth/encuentrameboed4663da-cloudformation-template.json",
         "logicalId": "authencuentrameboed4663da"
@@ -94,20 +94,20 @@
         "Name": "encuentrameApi-dev",
         "LambdaExecutionRole": "encuentrameboLambdaRoleccdd18fe-dev"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:39.085Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:39.299Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/function/encuentrameApi-cloudformation-template.json",
         "logicalId": "functionencuentrameApi"
       },
-      "lastBuildTimeStamp": "2026-02-21T23:59:09.484Z",
-      "lastBuildType": "PROD",
-      "lastPackageTimeStamp": "2026-02-21T23:59:13.535Z",
-      "distZipFilename": "encuentrameApi-4935624d49584c55444f-build.zip",
       "s3Bucket": {
         "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-        "s3Key": "amplify-builds/encuentrameApi-4935624d49584c55444f-build.zip"
+        "s3Key": "amplify-builds/encuentrameApi-346d372f4a4741694377-build.zip"
       },
-      "lastPushDirHash": "z1kWSsciPJ9jJX9yGnZr1GuA31w="
+      "lastBuildTimeStamp": "2026-02-22T04:19:53.376Z",
+      "lastBuildType": "PROD",
+      "lastPackageTimeStamp": "2026-02-22T04:20:01.178Z",
+      "distZipFilename": "encuentrameApi-346d372f4a4741694377-build.zip",
+      "lastPushDirHash": "9KaemeadoXpkrHDzZtUEpiFJ03k="
     }
   },
   "storage": {
@@ -124,7 +124,7 @@
         "PartitionKeyType": "S",
         "Name": "users-dev"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.690Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.020Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo324f6f26-cloudformation-template.json",
         "logicalId": "storagedynamo324f6f26"
@@ -143,7 +143,7 @@
         "PartitionKeyType": "S",
         "Name": "stalls-dev"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.692Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.023Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo800bfc2b-cloudformation-template.json",
         "logicalId": "storagedynamo800bfc2b"
@@ -162,7 +162,7 @@
         "PartitionKeyType": "S",
         "Name": "openinglogs-dev"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.694Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.026Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamo81bc09dc-cloudformation-template.json",
         "logicalId": "storagedynamo81bc09dc"
@@ -176,11 +176,31 @@
         "BucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
         "Region": "us-east-1"
       },
-      "lastPushTimeStamp": "2026-02-22T00:00:37.696Z",
+      "lastPushTimeStamp": "2026-02-22T04:21:38.028Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/cloudformation-template.json",
         "logicalId": "storages39e8ab6e7"
       }
+    },
+    "dynamof7a7b9aa": {
+      "service": "DynamoDB",
+      "providerPlugin": "awscloudformation",
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/storage/dynamof7a7b9aa-cloudformation-template.json",
+        "logicalId": "storagedynamof7a7b9aa"
+      },
+      "lastPushTimeStamp": "2026-02-22T04:21:38.031Z",
+      "output": {
+        "PartitionKeyName": "pk",
+        "SortKeyName": "sk",
+        "SortKeyType": "S",
+        "Region": "us-east-1",
+        "Arn": "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev-dev",
+        "StreamArn": "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev-dev/stream/2026-02-22T01:54:39.573",
+        "PartitionKeyType": "S",
+        "Name": "products-dev-dev"
+      },
+      "lastPushDirHash": "NXYgZF8nPy2v3m7ibEOvJkEw5ws="
     }
   }
 }

@@ -20,6 +20,10 @@
     {
       "cloudFormationParameterName": "bedrockModelId",
       "environmentVariableName": "BEDROCK_MODEL_ID"
+    },
+    {
+      "cloudFormationParameterName": "productsTable",
+      "environmentVariableName": "PRODUCTS_TABLE"
     }
   ],
   "permissions": {}

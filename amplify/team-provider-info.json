@@ -19,12 +19,13 @@
       "function": {
         "encuentrameApi": {
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-4935624d49584c55444f-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-346d372f4a4741694377-build.zip",
           "bucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
           "usersTable": "users-dev",
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",
-          "bedrockModelId": "amazon.titan-text-lite-v1"
+          "bedrockModelId": "amazon.titan-text-lite-v1",
+          "productsTable": "products-dev"
         }
       },
       "api": {
@@ -34,7 +35,8 @@
         "dynamo324f6f26": {},
         "dynamo800bfc2b": {},
         "dynamo81bc09dc": {},
-        "s39e8ab6e7": {}
+        "s39e8ab6e7": {},
+        "dynamof7a7b9aa": {}
       }
     }
   }

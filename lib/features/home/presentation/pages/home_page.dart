@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../../../shared/api/rest_client.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
+
 import '../../../../app/router.dart';
-import '../../../stalls/presentation/pages/open_stall_page.dart';
+import '../../../../shared/api/rest_client.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -29,7 +30,16 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      final health = await api.get('/health');
+      // ✅ 1) si no hay sesión, te manda a login y no llama API
+      final session = await Amplify.Auth.fetchAuthSession();
+      if (!session.isSignedIn) {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRoutes.login);
+        return;
+      }
+
+      // ✅ 2) ahora sí: ya hay token, llama API
+      final health = await api.get('/health');      // opcional
       final me = await api.get('/users/me');
 
       final role = (me['role'] as String?) ?? '';
@@ -49,7 +59,6 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // BUYER placeholder
       setState(() {
         log += '\n\nBUYER: aún no implementado';
       });
