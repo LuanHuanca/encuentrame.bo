@@ -1,29 +1,43 @@
 import 'package:flutter/material.dart';
 
-/// Colores de la marca Encuéntrame (azul y naranja).
+/// Colores de la marca Encuéntrame (teal/verde azulado + naranja).
 /// Usar [AppThemeColors] en pantallas para respetar modo claro/oscuro.
 class AppColors {
   AppColors._();
 
-  static const Color bluePrimary = Color(0xFF1565C0);
-  static const Color blueDark = Color(0xFF0D47A1);
-  static const Color blueSurface = Color(0xFF1C2836);
-  static const Color blueNeon = Color(0xFF42A5F5);
-  static const Color blueLightBg = Color(0xFFE3F2FD);
+  /// Primario: teal que combina con naranja (menos azul puro).
+  static const Color primary = Color(0xFF00796B);
+  static const Color primaryDark = Color(0xFF004D40);
+  static const Color primaryLight = Color(0xFF4DB6AC);
+
+  /// Compatibilidad con código que usa nombres antiguos.
+  static const Color bluePrimary = Color(0xFF00796B);
+  static const Color blueDark = Color(0xFF004D40);
+  static const Color blueSurface = Color(0xFF1A2525);
+  static const Color blueNeon = Color(0xFF4DB6AC);
+  static const Color blueLightBg = Color(0xFFE0F2F1);
 
   static const Color orangeAccent = Color(0xFFE65100);
   static const Color orangeBright = Color(0xFFFF9800);
   static const Color orangeSoft = Color(0xFFFFB74D);
 
-  static const Color backgroundDark = Color(0xFF121A24);
+  static const Color backgroundDark = Color(0xFF121A1C);
   static const Color cardOverlayDark = Color(0x1AFFFFFF);
 
-  /// Fondo de campos en modo claro (legible sobre fondo claro).
-  static const Color cardOverlayLight = Color(0xFFF0F4F8);
+  /// Fondo de campos en modo claro (tono neutro cálido).
+  static const Color cardOverlayLight = Color(0xFFF5F5F5);
   static const Color textOnDark = Color(0xFFFFFFFF);
   static const Color textMutedDark = Color(0xB3FFFFFF);
   static const Color textOnLight = Color(0xFF1A1A1A);
   static const Color textMutedLight = Color(0xFF616161);
+
+  /// Fondos claros para gradientes (menos azul, más neutro/teal suave).
+  static const Color surfaceLight = Color(0xFFF5F5F5);
+  static const Color surfaceLightEnd = Color(0xFFE8F5F4);
+
+  /// Estado: abierto (activo) y cerrado.
+  static const Color statusOpen = Color(0xFF2E7D32);
+  static const Color statusClosed = Color(0xFF616161);
 }
 
 /// Colores según tema actual (claro/oscuro) para buena legibilidad.
@@ -65,10 +79,10 @@ class AppThemeColors {
       return [
         AppColors.blueSurface,
         AppColors.backgroundDark,
-        AppColors.blueDark,
+        AppColors.primaryDark,
       ];
     }
-    return [AppColors.blueLightBg, Colors.white, const Color(0xFFBBDEFB)];
+    return [AppColors.blueLightBg, Colors.white, AppColors.surfaceLightEnd];
   }
 
   static Color linkColor(BuildContext context) {
@@ -93,7 +107,7 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: ColorScheme.light(
-        primary: AppColors.bluePrimary,
+        primary: AppColors.primary,
         secondary: AppColors.orangeBright,
         surface: Colors.white,
         onPrimary: Colors.white,
@@ -121,7 +135,7 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: ColorScheme.dark(
-        primary: AppColors.blueNeon,
+        primary: AppColors.primaryLight,
         secondary: AppColors.orangeBright,
         surface: AppColors.blueSurface,
         onPrimary: Colors.black87,

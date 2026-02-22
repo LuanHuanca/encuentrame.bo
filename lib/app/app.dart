@@ -4,6 +4,7 @@ import '../core/config/amplify_config.dart';
 import '../core/config/app_dependencies.dart';
 
 import 'router.dart';
+import 'splash/splash_screen.dart';
 import 'theme.dart';
 import 'theme_mode_scope.dart';
 
@@ -28,11 +29,21 @@ class _AppWidgetState extends State<AppWidget> {
   }
 
   Future<void> _boot() async {
+    final splashMinDuration = const Duration(seconds: 2);
+    final stopwatch = Stopwatch()..start();
+
     await _loadTheme();
     await AmplifyConfig.configure();
 
     final signedIn = await AppDependencies.auth.isSignedIn();
     _initialRoute = signedIn ? AppRoutes.home : AppRoutes.login;
+
+    stopwatch.stop();
+    final remaining =
+        splashMinDuration.inMilliseconds - stopwatch.elapsedMilliseconds;
+    if (remaining > 0 && mounted) {
+      await Future.delayed(Duration(milliseconds: remaining));
+    }
 
     if (mounted) {
       setState(() => _booting = false);
@@ -50,7 +61,9 @@ class _AppWidgetState extends State<AppWidget> {
   }
 
   void _toggleTheme() {
-    final next = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    final next = _themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
     setState(() => _themeMode = next);
     ThemeModeStorage.save(next);
   }
@@ -58,9 +71,12 @@ class _AppWidgetState extends State<AppWidget> {
   @override
   Widget build(BuildContext context) {
     if (!_themeLoaded || _booting) {
-      return const MaterialApp(
+      return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: _themeMode,
+        home: const SplashScreen(),
       );
     }
 

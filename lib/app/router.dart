@@ -8,10 +8,9 @@ import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/pages/reset_password_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
 
-import '../features/home/presentation/pages/home_page.dart';
 import '../features/onboarding/presentation/pages/role_selection_page.dart';
 import '../features/profile/presentation/pages/profile_page.dart';
-import '../features/stalls/presentation/pages/stalls_list_page.dart';
+import 'shell/main_shell.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -35,7 +34,13 @@ class AppRouter {
       case AppRoutes.home:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const HomePage(),
+          builder: (_) => const MainShell(initialIndex: MainShellIndex.home),
+        );
+
+      case AppRoutes.stalls:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => const MainShell(initialIndex: MainShellIndex.stalls),
         );
 
       case AppRoutes.login:
@@ -88,12 +93,6 @@ class AppRouter {
         return MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => const RoleSelectionPage(),
-        );
-
-      case AppRoutes.stalls:
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => const StallsListPage(),
         );
 
       default:

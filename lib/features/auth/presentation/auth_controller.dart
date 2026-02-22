@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+
+import '../../../core/utils/user_friendly_messages.dart';
 import '../data/auth_repository.dart';
 
 class AuthController extends ChangeNotifier {
@@ -15,7 +17,8 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       return await fn();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      UserFriendlyMessages.logToConsole(e, stackTrace);
       error = e.toString();
       notifyListeners();
       return null;
@@ -62,9 +65,17 @@ class AuthController extends ChangeNotifier {
     return r ?? false;
   }
 
-  Future<bool> confirmResetPassword(String email, String code, String newPassword) async {
+  Future<bool> confirmResetPassword(
+    String email,
+    String code,
+    String newPassword,
+  ) async {
     final r = await _wrap(() async {
-      await _repo.confirmResetPassword(email: email, code: code, newPassword: newPassword);
+      await _repo.confirmResetPassword(
+        email: email,
+        code: code,
+        newPassword: newPassword,
+      );
       return true;
     });
     return r ?? false;

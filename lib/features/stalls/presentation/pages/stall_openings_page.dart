@@ -1,3 +1,4 @@
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme.dart';
@@ -43,6 +44,7 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -54,12 +56,25 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
         queryParameters: {'limit': '50'},
       );
 
-      final list = (res['openings'] as List?)?.cast<dynamic>() ?? const [];
-      _openings = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      // Aceptar 'openings', 'items' o 'data' como lista
+      List<dynamic> rawList = const [];
+      if (res['openings'] is List) {
+        rawList = (res['openings'] as List).toList();
+      } else if (res['items'] is List) {
+        rawList = (res['items'] as List).toList();
+      } else if (res['data'] is List) {
+        rawList = (res['data'] as List).toList();
+      }
+
+      _openings = rawList
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
     } on ApiClientException catch (e) {
       _error = e.message;
-    } catch (e) {
-      _error = 'Error: $e';
+    } catch (e, st) {
+      _error = e.toString();
+      debugPrint('StallOpeningsPage _load error: $e\n$st');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -67,7 +82,6 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
     final sub = AppThemeColors.subtitleColor(context);
 
     return Scaffold(
@@ -85,58 +99,263 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-            : _openings.isEmpty
-            ? Center(child: Text('Aún no hay aperturas.', style: TextStyle(color: sub)))
-            : ListView.separated(
-          itemCount: _openings.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (_, i) {
-            final o = _openings[i];
-            final status = (o['status'] ?? '').toString();
-            final openedAt = _fmtDate(o['openedAt']?.toString());
-            final closedAt = _fmtDate(o['closedAt']?.toString());
-
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            openedAt.isEmpty ? 'Apertura' : openedAt,
-                            style: TextStyle(fontWeight: FontWeight.w800, color: title),
-                          ),
-                        ),
-                        Chip(label: Text(status.isEmpty ? '—' : status)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    if (closedAt.isNotEmpty)
-                      Text('Cerrado: $closedAt', style: TextStyle(color: sub)),
-                    const SizedBox(height: 10),
-                    FilledButton.tonal(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => StallOpeningDetailPage(
-                            stallId: widget.stallId,
-                            stallName: widget.stallName,
-                            opening: o,
-                          ),
-                        ),
+            ? Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline_rounded, size: 56, color: sub),
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: TextStyle(color: sub, fontSize: 15),
+                        textAlign: TextAlign.center,
                       ),
-                      child: const Text('Ver detalle'),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : _openings.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.history_rounded, size: 56, color: sub),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Aún no hay aperturas',
+                      style: TextStyle(color: sub, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cuando abras y cierres tu puesto, aquí aparecerá el historial.',
+                      style: TextStyle(color: sub, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    TextButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 20),
+                      label: const Text('Actualizar'),
                     ),
                   ],
                 ),
+              )
+            : ListView.separated(
+                itemCount: _openings.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) {
+                  final o = _openings[i];
+                  final status = (o['status'] ?? '').toString().toUpperCase();
+                  final isOpen = status == 'OPEN';
+                  final openedAt = _fmtDate(o['openedAt']?.toString());
+                  final closedAt = _fmtDate(o['closedAt']?.toString());
+
+                  return _OpeningCard(
+                    opening: o,
+                    stallId: widget.stallId,
+                    stallName: widget.stallName,
+                    openedAt: openedAt,
+                    closedAt: closedAt,
+                    isOpen: isOpen,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StallOpeningDetailPage(
+                          stallId: widget.stallId,
+                          stallName: widget.stallName,
+                          opening: o,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
+      ),
+    );
+  }
+}
+
+class _OpeningCard extends StatelessWidget {
+  const _OpeningCard({
+    required this.opening,
+    required this.stallId,
+    required this.stallName,
+    required this.openedAt,
+    required this.closedAt,
+    required this.isOpen,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> opening;
+  final String stallId;
+  final String stallName;
+  final String openedAt;
+  final String closedAt;
+  final bool isOpen;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = AppThemeColors.titleColor(context);
+    final sub = AppThemeColors.subtitleColor(context);
+    final photoKey = opening['stallPhotoKey'] ?? opening['productsPhotoKey'];
+    final photoKeyStr = photoKey is String ? photoKey : null;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: (isOpen ? AppColors.statusOpen : AppColors.statusClosed)
+              .withValues(alpha: 0.3),
         ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Thumbnail(photoKey: photoKeyStr, isOpen: isOpen),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        openedAt.isEmpty ? 'Apertura' : openedAt,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: title,
+                        ),
+                      ),
+                      if (closedAt.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Cerrado: $closedAt',
+                          style: TextStyle(fontSize: 13, color: sub),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isOpen
+                                  ? AppColors.statusOpen.withValues(alpha: 0.15)
+                                  : AppColors.statusClosed.withValues(
+                                      alpha: 0.15,
+                                    ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isOpen ? 'Abierto' : 'Cerrado',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isOpen
+                                    ? AppColors.statusOpen
+                                    : AppColors.statusClosed,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Ver detalle',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Thumbnail extends StatefulWidget {
+  const _Thumbnail({this.photoKey, required this.isOpen});
+
+  final String? photoKey;
+  final bool isOpen;
+
+  @override
+  State<_Thumbnail> createState() => _ThumbnailState();
+}
+
+class _ThumbnailState extends State<_Thumbnail> {
+  String? _url;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.photoKey != null) _loadUrl();
+  }
+
+  Future<void> _loadUrl() async {
+    try {
+      final res = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(widget.photoKey!),
+      ).result;
+      if (mounted) setState(() => _url = res.url.toString());
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 88,
+      height: 100,
+      color: (widget.isOpen ? AppColors.statusOpen : AppColors.statusClosed)
+          .withValues(alpha: 0.12),
+      child: _url != null
+          ? Image.network(
+              _url!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _placeholder(),
+            )
+          : _placeholder(),
+    );
+  }
+
+  Widget _placeholder() {
+    return Center(
+      child: Icon(
+        widget.isOpen ? Icons.storefront_rounded : Icons.history_rounded,
+        size: 36,
+        color: (widget.isOpen ? AppColors.statusOpen : AppColors.statusClosed)
+            .withValues(alpha: 0.6),
       ),
     );
   }

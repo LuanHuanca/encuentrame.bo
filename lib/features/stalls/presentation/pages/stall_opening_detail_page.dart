@@ -74,55 +74,243 @@ class _StallOpeningDetailPageState extends State<StallOpeningDetailPage> {
 
     final o = widget.opening;
     final status = (o['status'] ?? '').toString();
+    final isOpen = status.toUpperCase() == 'OPEN';
     final openedAt = _fmtDate(o['openedAt']?.toString());
     final closedAt = _fmtDate(o['closedAt']?.toString());
 
     final items = (o['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
-    final visionOnly = (o['inventoryVisionOnly'] as List?)?.cast<dynamic>() ?? const [];
+    final visionOnly =
+        (o['inventoryVisionOnly'] as List?)?.cast<dynamic>() ?? const [];
+    final rekLabels =
+        (o['rekognitionLabels'] as List?)?.cast<dynamic>() ?? const [];
+    final modLabels =
+        (o['moderationLabels'] as List?)?.cast<dynamic>() ?? const [];
+    final imageUrls = [
+      _stallPhotoUrl,
+      _productsPhotoUrl,
+    ].whereType<String>().toList();
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.stallName)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            openedAt.isEmpty ? 'Apertura' : openedAt,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: title),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  openedAt.isEmpty ? 'Apertura' : openedAt,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: title,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isOpen
+                      ? AppColors.statusOpen.withValues(alpha: 0.15)
+                      : AppColors.statusClosed.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  isOpen ? 'Abierto' : 'Cerrado',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isOpen
+                        ? AppColors.statusOpen
+                        : AppColors.statusClosed,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
+          if (closedAt.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Cerrado: $closedAt',
+              style: TextStyle(color: sub, fontSize: 14),
+            ),
+          ],
+          const SizedBox(height: 16),
+
+          if (imageUrls.isNotEmpty) ...[
+            _ImageCarousel(urls: imageUrls),
+            const SizedBox(height: 20),
+          ],
+
           Text(
-            'Estado: ${status.isEmpty ? '—' : status}${closedAt.isEmpty ? '' : ' • Cerrado: $closedAt'}',
-            style: TextStyle(color: sub),
+            'Inventario',
+            style: TextStyle(
+              color: title,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _InventorySection(
+            title: 'Confirmado',
+            items: items,
+            empty: 'Sin items',
+          ),
+          const SizedBox(height: 8),
+          _InventorySection(
+            title: 'Sugerido por foto',
+            items: visionOnly,
+            empty: 'Sin sugerencias',
           ),
           const SizedBox(height: 16),
 
           _OsmLocationCard(opening: o),
-
           const SizedBox(height: 16),
-          Text('Imágenes', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          _ImageCard(label: 'Puesto / entorno', url: _stallPhotoUrl),
-          const SizedBox(height: 10),
-          _ImageCard(label: 'Productos (mesa)', url: _productsPhotoUrl),
 
+          _CompactLabelsSection(
+            rekognitionLabels: rekLabels,
+            moderationLabels: modLabels,
+          ),
           const SizedBox(height: 16),
-          Text('Rekognition', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          _LabelsBlock(title: 'Labels detectados', labels: (o['rekognitionLabels'] as List?)?.cast<dynamic>()),
-          const SizedBox(height: 10),
-          _LabelsBlock(title: 'Moderación', labels: (o['moderationLabels'] as List?)?.cast<dynamic>(), emptyText: 'Sin alertas ✅'),
 
-          const SizedBox(height: 16),
-          Text('Inventario', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          _InventorySection(title: 'Confirmado (voz/texto)', items: items, empty: 'Sin items'),
-          const SizedBox(height: 10),
-          _InventorySection(title: 'Sugerido por foto', items: visionOnly, empty: 'Sin sugerencias'),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text(
+              'Ver texto de voz original',
+              style: TextStyle(fontSize: 14, color: title),
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  (o['inventoryRaw'] ?? '').toString(),
+                  style: TextStyle(color: sub, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-          const SizedBox(height: 16),
-          Text('Texto original', style: TextStyle(color: title, fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text((o['inventoryRaw'] ?? '').toString(), style: TextStyle(color: sub)),
+class _ImageCarousel extends StatelessWidget {
+  const _ImageCarousel({required this.urls});
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 220,
+      child: PageView.builder(
+        itemCount: urls.length,
+        itemBuilder: (_, i) => Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.network(
+              urls[i],
+              fit: BoxFit.cover,
+              width: double.infinity,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactLabelsSection extends StatelessWidget {
+  const _CompactLabelsSection({
+    required this.rekognitionLabels,
+    required this.moderationLabels,
+  });
+  final List<dynamic> rekognitionLabels;
+  final List<dynamic> moderationLabels;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = AppThemeColors.titleColor(context);
+    final sub = AppThemeColors.subtitleColor(context);
+    final rekCount = rekognitionLabels.length;
+    final modCount = moderationLabels.length;
+    final hasModAlerts = modCount > 0;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppThemeColors.inputFill(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                hasModAlerts
+                    ? Icons.warning_amber_rounded
+                    : Icons.check_circle_outline_rounded,
+                size: 20,
+                color: hasModAlerts
+                    ? AppColors.orangeBright
+                    : AppColors.statusOpen,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                hasModAlerts ? 'Revisar contenido' : 'Contenido OK',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: title,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            rekCount > 0
+                ? '$rekCount etiqueta${rekCount == 1 ? '' : 's'} detectada${rekCount == 1 ? '' : 's'} en la imagen.'
+                : 'Sin etiquetas detectadas.',
+            style: TextStyle(fontSize: 13, color: sub),
+          ),
+          if (rekCount > 0 || modCount > 0) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ...rekognitionLabels.take(8).map((x) {
+                  final m = (x as Map).cast<String, dynamic>();
+                  final name = (m['name'] ?? '').toString();
+                  return Chip(
+                    label: Text(name, style: const TextStyle(fontSize: 12)),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  );
+                }),
+                if (modCount > 0)
+                  ...moderationLabels.take(4).map((x) {
+                    final m = (x as Map).cast<String, dynamic>();
+                    final name = (m['name'] ?? '').toString();
+                    return Chip(
+                      avatar: const Icon(
+                        Icons.warning_amber,
+                        size: 16,
+                        color: AppColors.orangeBright,
+                      ),
+                      label: Text(name, style: const TextStyle(fontSize: 12)),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -142,7 +330,8 @@ class _OsmLocationCard extends StatelessWidget {
     final lng = (opening['lng'] as num?)?.toDouble();
     final acc = (opening['accuracy'] as num?)?.toDouble();
 
-    if (lat == null || lng == null) return Text('Sin ubicación', style: TextStyle(color: sub));
+    if (lat == null || lng == null)
+      return Text('Sin ubicación', style: TextStyle(color: sub));
 
     final center = LatLng(lat, lng);
 
@@ -155,7 +344,10 @@ class _OsmLocationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Ubicación', style: TextStyle(color: title, fontWeight: FontWeight.w700)),
+          Text(
+            'Ubicación',
+            style: TextStyle(color: title, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 6),
           Text(
             'lat ${lat.toStringAsFixed(6)} • lng ${lng.toStringAsFixed(6)} • ±${(acc ?? 0).toStringAsFixed(0)}m',
@@ -170,7 +362,8 @@ class _OsmLocationCard extends StatelessWidget {
                 options: MapOptions(initialCenter: center, initialZoom: 16),
                 children: [
                   TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'encuentrame.bo',
                   ),
                   MarkerLayer(
@@ -193,83 +386,12 @@ class _OsmLocationCard extends StatelessWidget {
   }
 }
 
-class _ImageCard extends StatelessWidget {
-  const _ImageCard({required this.label, required this.url});
-  final String label;
-  final String? url;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: title, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          if (url == null)
-            Text('No disponible', style: TextStyle(color: sub))
-          else
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(url!, height: 180, width: double.infinity, fit: BoxFit.cover),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LabelsBlock extends StatelessWidget {
-  const _LabelsBlock({required this.title, required this.labels, this.emptyText = 'Sin datos'});
-  final String title;
-  final List<dynamic>? labels;
-  final String emptyText;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
-
-    final list = labels ?? const [];
-    if (list.isEmpty) return Text('$title: $emptyText', style: TextStyle(color: sub));
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: TextStyle(color: t, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: list.map((x) {
-              final m = (x as Map).cast<String, dynamic>();
-              final name = (m['name'] ?? '').toString();
-              final conf = (m['confidence'] ?? '').toString();
-              return Chip(label: Text('$name • $conf'));
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _InventorySection extends StatelessWidget {
-  const _InventorySection({required this.title, required this.items, required this.empty});
+  const _InventorySection({
+    required this.title,
+    required this.items,
+    required this.empty,
+  });
   final String title;
   final List<dynamic> items;
   final String empty;
@@ -277,7 +399,8 @@ class _InventorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sub = AppThemeColors.subtitleColor(context);
-    if (items.isEmpty) return Text('$title: $empty', style: TextStyle(color: sub));
+    if (items.isEmpty)
+      return Text('$title: $empty', style: TextStyle(color: sub));
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -292,24 +415,32 @@ class _InventorySection extends StatelessWidget {
           const SizedBox(height: 8),
           ...items.map((x) {
             final m = (x as Map).cast<String, dynamic>();
-            final display = (m['display'] ?? m['canonical'] ?? 'Producto').toString();
+            final display = (m['display'] ?? m['canonical'] ?? 'Producto')
+                .toString();
             final qty = (m['qty'] ?? 1).toString();
             final unit = (m['unit'] ?? 'unidad').toString();
             final conf = (m['confidence'] ?? '').toString();
-            final ev = (m['evidence'] is Map) ? (m['evidence'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+            final ev = (m['evidence'] is Map)
+                ? (m['evidence'] as Map).cast<String, dynamic>()
+                : <String, dynamic>{};
             final vision = (ev['vision'] as List?)?.cast<dynamic>() ?? const [];
             final suggested = m['suggested'] == true;
 
             final meta = <String>[];
             meta.add('x$qty $unit');
             if (conf.isNotEmpty) meta.add('conf: $conf');
-            if (vision.isNotEmpty) meta.add('foto: ${vision.take(3).join(', ')}');
+            if (vision.isNotEmpty)
+              meta.add('foto: ${vision.take(3).join(', ')}');
             if (suggested) meta.add('sugerido');
 
             return ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(suggested ? Icons.lightbulb_outline : Icons.check_circle_outline),
+              leading: Icon(
+                suggested
+                    ? Icons.lightbulb_outline
+                    : Icons.check_circle_outline,
+              ),
               title: Text(display),
               subtitle: Text(meta.join(' • ')),
               trailing: Text('x$qty'),

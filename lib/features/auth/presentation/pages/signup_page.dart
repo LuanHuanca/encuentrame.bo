@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
 import '../../../../app/theme_toggle_icon.dart';
+import '../../../../core/utils/user_friendly_messages.dart';
+import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
 
 /// Rol seleccionado en el registro (mapear a VENDOR/BUYER).
@@ -28,6 +30,24 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   SignupRole? _selectedRole;
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _redirectIfAlreadySignedIn(),
+    );
+  }
+
+  Future<void> _redirectIfAlreadySignedIn() async {
+    final signedIn = await widget.auth.isSignedIn();
+    if (!mounted) return;
+    setState(() => _checkingSession = false);
+    if (signedIn) {
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (r) => false);
+    }
+  }
 
   @override
   void dispose() {
@@ -40,9 +60,7 @@ class _SignupPageState extends State<SignupPage> {
 
   Future<void> _submit() async {
     if (_selectedRole == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Elige si eres vendedor o comprador')),
-      );
+      AppSnackbar.info(context, 'Elige si eres vendedor o comprador');
       return;
     }
 
@@ -66,15 +84,35 @@ class _SignupPageState extends State<SignupPage> {
         },
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.auth.error ?? 'Error al registrar')),
+      AppSnackbar.error(
+        context,
+        UserFriendlyMessages.fromAuthError(widget.auth.error),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return Scaffold(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: AppThemeColors.backgroundGradient(context),
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(color: Colors.white70),
+          ),
+        ),
+      );
+    }
     final themeColors = AppThemeColors.backgroundGradient(context);
+    final titleColor = AppThemeColors.titleColor(context);
 
     return Scaffold(
       body: Stack(
@@ -97,23 +135,40 @@ class _SignupPageState extends State<SignupPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                            context,
+                            AppRoutes.login,
+                            (r) => false,
+                          ),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          style: IconButton.styleFrom(
+                            foregroundColor: titleColor,
+                          ),
+                          tooltip: 'Volver al inicio de sesión',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Text(
                         'Crear cuenta',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: AppThemeColors.titleColor(context),
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(
+                              color: AppThemeColors.titleColor(context),
+                              fontWeight: FontWeight.bold,
+                            ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 28),
-
+                      const SizedBox(height: 20),
                       Text(
                         '¿Quién eres?',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
@@ -126,7 +181,9 @@ class _SignupPageState extends State<SignupPage> {
                               icon: Icons.storefront_outlined,
                               selected: _selectedRole == SignupRole.vendedor,
                               color: AppColors.orangeBright,
-                              onTap: () => setState(() => _selectedRole = SignupRole.vendedor),
+                              onTap: () => setState(
+                                () => _selectedRole = SignupRole.vendedor,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -136,7 +193,9 @@ class _SignupPageState extends State<SignupPage> {
                               icon: Icons.shopping_bag_outlined,
                               selected: _selectedRole == SignupRole.comprador,
                               color: AppColors.blueNeon,
-                              onTap: () => setState(() => _selectedRole = SignupRole.comprador),
+                              onTap: () => setState(
+                                () => _selectedRole = SignupRole.comprador,
+                              ),
                             ),
                           ),
                         ],
@@ -149,7 +208,8 @@ class _SignupPageState extends State<SignupPage> {
                         hint: 'Nombre de usuario',
                         icon: Icons.person_outline,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Ingresa tu nombre';
+                          if (v == null || v.trim().isEmpty)
+                            return 'Ingresa tu nombre';
                           return null;
                         },
                       ),
@@ -161,7 +221,8 @@ class _SignupPageState extends State<SignupPage> {
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Ingresa tu correo';
+                          if (v == null || v.trim().isEmpty)
+                            return 'Ingresa tu correo';
                           if (!v.contains('@')) return 'Correo no válido';
                           return null;
                         },
@@ -175,14 +236,19 @@ class _SignupPageState extends State<SignupPage> {
                         obscureText: _obscurePassword,
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             color: AppThemeColors.inputHint(context),
                             size: 22,
                           ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Ingresa una contraseña';
+                          if (v == null || v.isEmpty)
+                            return 'Ingresa una contraseña';
                           if (v.length < 6) return 'Mínimo 6 caracteres';
                           return null;
                         },
@@ -196,15 +262,21 @@ class _SignupPageState extends State<SignupPage> {
                         obscureText: _obscureConfirm,
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            _obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             color: AppThemeColors.inputHint(context),
                             size: 22,
                           ),
-                          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                          onPressed: () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Confirma tu contraseña';
-                          if (v != _passwordController.text) return 'Las contraseñas no coinciden';
+                          if (v == null || v.isEmpty)
+                            return 'Confirma tu contraseña';
+                          if (v != _passwordController.text)
+                            return 'Las contraseñas no coinciden';
                           return null;
                         },
                       ),
@@ -212,17 +284,10 @@ class _SignupPageState extends State<SignupPage> {
                       const SizedBox(height: 28),
                       _PrimaryButton(
                         onPressed: widget.auth.loading ? null : _submit,
-                        label: widget.auth.loading ? 'Cargando...' : 'Registrarse',
+                        label: widget.auth.loading
+                            ? 'Cargando...'
+                            : 'Registrarse',
                       ),
-
-                      if (widget.auth.error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          widget.auth.error!,
-                          style: const TextStyle(color: Colors.red),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
 
                       const SizedBox(height: 24),
                       Row(
@@ -236,7 +301,10 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.login),
+                            onPressed: () => Navigator.pushReplacementNamed(
+                              context,
+                              AppRoutes.login,
+                            ),
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,
                               minimumSize: Size.zero,
@@ -402,8 +470,15 @@ class _SignupInputField extends StatelessWidget {
       style: TextStyle(color: AppThemeColors.inputText(context), fontSize: 16),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppThemeColors.inputHint(context), fontSize: 16),
-        prefixIcon: Icon(icon, color: AppThemeColors.inputHint(context), size: 22),
+        hintStyle: TextStyle(
+          color: AppThemeColors.inputHint(context),
+          fontSize: 16,
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: AppThemeColors.inputHint(context),
+          size: 22,
+        ),
         suffixIcon: suffixIcon,
         filled: true,
         fillColor: AppThemeColors.inputFill(context),

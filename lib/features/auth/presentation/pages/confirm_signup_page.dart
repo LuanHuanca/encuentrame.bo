@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
+import '../../../../core/utils/user_friendly_messages.dart';
+import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
 
 class ConfirmSignupPage extends StatefulWidget {
@@ -41,13 +43,15 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
     if (!mounted) return;
 
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cuenta confirmada ✅')),
+      AppSnackbar.success(
+        context,
+        'Cuenta confirmada. Ya puedes iniciar sesión.',
       );
       Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (r) => false);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.auth.error ?? 'Error al confirmar')),
+      AppSnackbar.error(
+        context,
+        UserFriendlyMessages.fromAuthError(widget.auth.error),
       );
     }
   }
@@ -73,7 +77,23 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppRoutes.login,
+                      (r) => false,
+                    ),
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      color: AppThemeColors.titleColor(context),
+                    ),
+                    tooltip: 'Volver al inicio de sesión',
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
                   'Confirmar cuenta',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -86,7 +106,9 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
                 Text(
                   'Código enviado a:\n${widget.email}',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppThemeColors.subtitleColor(context)),
+                  style: TextStyle(
+                    color: AppThemeColors.subtitleColor(context),
+                  ),
                 ),
                 const SizedBox(height: 28),
                 TextField(
@@ -95,7 +117,9 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
                   style: TextStyle(color: AppThemeColors.inputText(context)),
                   decoration: InputDecoration(
                     hintText: 'Código',
-                    hintStyle: TextStyle(color: AppThemeColors.inputHint(context)),
+                    hintStyle: TextStyle(
+                      color: AppThemeColors.inputHint(context),
+                    ),
                     filled: true,
                     fillColor: AppThemeColors.inputFill(context),
                     border: OutlineInputBorder(
@@ -107,12 +131,10 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: widget.auth.loading ? null : _confirm,
-                  child: Text(widget.auth.loading ? 'Confirmando...' : 'Confirmar'),
+                  child: Text(
+                    widget.auth.loading ? 'Confirmando...' : 'Confirmar',
+                  ),
                 ),
-                if (widget.auth.error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(widget.auth.error!, style: const TextStyle(color: Colors.red)),
-                ],
               ],
             ),
           ),

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
 import '../../../../app/theme_toggle_icon.dart';
+import '../../../../core/utils/user_friendly_messages.dart';
+import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
 
 /// Pantalla de inicio de sesión con diseño azul y naranja.
@@ -20,6 +22,24 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _redirectIfAlreadySignedIn(),
+    );
+  }
+
+  Future<void> _redirectIfAlreadySignedIn() async {
+    final signedIn = await widget.auth.isSignedIn();
+    if (!mounted) return;
+    setState(() => _checkingSession = false);
+    if (signedIn) {
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (r) => false);
+    }
+  }
 
   @override
   void dispose() {
@@ -41,14 +61,33 @@ class _LoginPageState extends State<LoginPage> {
     if (ok) {
       Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (r) => false);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.auth.error ?? 'Error al iniciar sesión')),
+      AppSnackbar.error(
+        context,
+        UserFriendlyMessages.fromAuthError(widget.auth.error),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return Scaffold(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: AppThemeColors.backgroundGradient(context),
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(color: Colors.white70),
+          ),
+        ),
+      );
+    }
     final themeColors = AppThemeColors.backgroundGradient(context);
 
     return Scaffold(
@@ -75,11 +114,12 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 48),
                       Text(
                         'Encuéntrame',
-                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                          color: AppThemeColors.titleColor(context),
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,
-                        ),
+                        style: Theme.of(context).textTheme.headlineLarge
+                            ?.copyWith(
+                              color: AppThemeColors.titleColor(context),
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.5,
+                            ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
@@ -98,7 +138,8 @@ class _LoginPageState extends State<LoginPage> {
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Ingresa tu correo';
+                          if (v == null || v.trim().isEmpty)
+                            return 'Ingresa tu correo';
                           if (!v.contains('@')) return 'Correo no válido';
                           return null;
                         },
@@ -112,14 +153,19 @@ class _LoginPageState extends State<LoginPage> {
                         obscureText: _obscurePassword,
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             color: AppThemeColors.inputHint(context),
                             size: 22,
                           ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
+                          if (v == null || v.isEmpty)
+                            return 'Ingresa tu contraseña';
                           return null;
                         },
                       ),
@@ -128,7 +174,10 @@ class _LoginPageState extends State<LoginPage> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () => Navigator.pushNamed(context, AppRoutes.forgotPassword),
+                          onPressed: () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.forgotPassword,
+                          ),
                           child: Text(
                             '¿Olvidaste tu contraseña?',
                             style: TextStyle(
@@ -142,17 +191,10 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 24),
                       _PrimaryButton(
                         onPressed: widget.auth.loading ? null : _submit,
-                        label: widget.auth.loading ? 'Cargando...' : 'Iniciar sesión',
+                        label: widget.auth.loading
+                            ? 'Cargando...'
+                            : 'Iniciar sesión',
                       ),
-
-                      if (widget.auth.error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          widget.auth.error!,
-                          style: const TextStyle(color: Colors.red),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
 
                       const SizedBox(height: 24),
                       Row(
@@ -166,7 +208,10 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.signup),
+                            onPressed: () => Navigator.pushReplacementNamed(
+                              context,
+                              AppRoutes.signup,
+                            ),
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,
                               minimumSize: Size.zero,
@@ -273,8 +318,15 @@ class _InputField extends StatelessWidget {
       style: TextStyle(color: AppThemeColors.inputText(context), fontSize: 16),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppThemeColors.inputHint(context), fontSize: 16),
-        prefixIcon: Icon(icon, color: AppThemeColors.inputHint(context), size: 22),
+        hintStyle: TextStyle(
+          color: AppThemeColors.inputHint(context),
+          fontSize: 16,
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: AppThemeColors.inputHint(context),
+          size: 22,
+        ),
         suffixIcon: suffixIcon,
         filled: true,
         fillColor: AppThemeColors.inputFill(context),
