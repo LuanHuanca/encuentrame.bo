@@ -16,6 +16,10 @@
     {
       "cloudFormationParameterName": "openinglogsTable",
       "environmentVariableName": "OPENINGLOGS_TABLE"
+    },
+    {
+      "cloudFormationParameterName": "bedrockModelId",
+      "environmentVariableName": "BEDROCK_MODEL_ID"
     }
   ],
   "permissions": {}

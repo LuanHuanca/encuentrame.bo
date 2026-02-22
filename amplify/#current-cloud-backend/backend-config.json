@@ -52,6 +52,14 @@
     }
   },
   "parameters": {
+    "AMPLIFY_function_encuentrameApi_bedrockModelId": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
     "AMPLIFY_function_encuentrameApi_bucketName": {
       "usedBy": [
         {

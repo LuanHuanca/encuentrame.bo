@@ -27,6 +27,9 @@
     },
     "openinglogsTable": {
       "Type": "String"
+    },
+    "bedrockModelId": {
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -93,6 +96,9 @@
             },
             "OPENINGLOGS_TABLE": {
               "Ref": "openinglogsTable"
+            },
+            "BEDROCK_MODEL_ID": {
+              "Ref": "bedrockModelId"
             }
           }
         },

@@ -1,20 +1,41 @@
 /* eslint-disable */
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   };
 }
-function jsonBody(event) {
-  if (!event.body) return {};
-  try { return JSON.parse(event.body); } catch { return {}; }
+
+function ok(body = {}, statusCode = 200) {
+  return {
+    statusCode,
+    headers: corsHeaders(),
+    body: JSON.stringify(body),
+  };
 }
-function res(statusCode, body) {
-  return { statusCode, headers: corsHeaders(), body: JSON.stringify(body) };
+
+function bad(statusCode = 400, code = 'ERROR', message = 'Error', details) {
+  const err = { code, message };
+  if (details !== undefined && details !== null && String(details).length) {
+    err.details = String(details);
+  }
+
+  return {
+    statusCode,
+    headers: corsHeaders(),
+    body: JSON.stringify({ error: err }),
+  };
 }
-function ok(body) { return res(200, body); }
-function bad(status, code, message, details) {
-  return res(status, { error: { code, message, details: details ?? null } });
+
+function options() {
+  return {
+    statusCode: 204,
+    headers: corsHeaders(),
+    body: '',
+  };
 }
-module.exports = { corsHeaders, jsonBody, ok, bad };
+
+module.exports = { corsHeaders, ok, bad, options };

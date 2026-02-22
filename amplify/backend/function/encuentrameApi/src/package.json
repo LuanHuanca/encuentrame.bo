@@ -1,10 +1,12 @@
 {
   "name": "encuentrameapi",
   "version": "1.0.0",
-  "main": "src/index.js",
+  "main": "index.js",
   "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.600.0",
-    "@aws-sdk/lib-dynamodb": "^3.600.0"
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-rekognition": "^3.600.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.600.0"
   }
 }

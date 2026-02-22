@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/router.dart';
 import '../../../../shared/api/rest_client.dart';
+import '../../../stalls/presentation/pages/open_stall_page.dart';
 
 class RoleSelectionPage extends StatefulWidget {
   const RoleSelectionPage({super.key});
