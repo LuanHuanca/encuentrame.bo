@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
@@ -11,34 +12,34 @@ class ConfirmSignupPage extends StatefulWidget {
     super.key,
     required this.auth,
     required this.email,
-    required this.pendingRole,
-    required this.pendingName,
   });
 
   final AuthController auth;
   final String email;
-
-  // Siguiente fase: se guardarán en DynamoDB vía /users/me
-  final String pendingRole;
-  final String pendingName;
 
   @override
   State<ConfirmSignupPage> createState() => _ConfirmSignupPageState();
 }
 
 class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
-  final _code = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _codeController = TextEditingController();
 
   @override
   void dispose() {
-    _code.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
   Future<void> _confirm() async {
-    if (_code.text.trim().isEmpty) return;
+    FocusScope.of(context).unfocus();
 
-    final ok = await widget.auth.confirmSignUp(widget.email, _code.text.trim());
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final ok = await widget.auth.confirmSignUp(
+      widget.email.trim(),
+      _codeController.text.trim(),
+    );
 
     if (!mounted) return;
 
@@ -48,12 +49,13 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
         'Cuenta confirmada. Ya puedes iniciar sesión.',
       );
       Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (r) => false);
-    } else {
-      AppSnackbar.error(
-        context,
-        UserFriendlyMessages.fromAuthError(widget.auth.error),
-      );
+      return;
     }
+
+    AppSnackbar.error(
+      context,
+      UserFriendlyMessages.fromAuthError(widget.auth.error),
+    );
   }
 
   @override
@@ -61,81 +63,110 @@ class _ConfirmSignupPageState extends State<ConfirmSignupPage> {
     final themeColors = AppThemeColors.backgroundGradient(context);
 
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: themeColors,
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: themeColors,
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      AppRoutes.login,
-                      (r) => false,
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          AppRoutes.login,
+                              (r) => false,
+                        ),
+                        icon: Icon(
+                          Icons.arrow_back_rounded,
+                          color: AppThemeColors.titleColor(context),
+                        ),
+                        tooltip: 'Volver al inicio de sesión',
+                      ),
                     ),
-                    icon: Icon(
-                      Icons.arrow_back_rounded,
-                      color: AppThemeColors.titleColor(context),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Confirmar cuenta',
+                      style:
+                      Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: AppThemeColors.titleColor(context),
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    tooltip: 'Volver al inicio de sesión',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Confirmar cuenta',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: AppThemeColors.titleColor(context),
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Código enviado a:\n${widget.email}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppThemeColors.subtitleColor(context),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                TextField(
-                  controller: _code,
-                  keyboardType: TextInputType.number,
-                  style: TextStyle(color: AppThemeColors.inputText(context)),
-                  decoration: InputDecoration(
-                    hintText: 'Código',
-                    hintStyle: TextStyle(
-                      color: AppThemeColors.inputHint(context),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Código enviado a:\n${widget.email}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppThemeColors.subtitleColor(context),
+                      ),
                     ),
-                    filled: true,
-                    fillColor: AppThemeColors.inputFill(context),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                    const SizedBox(height: 8),
+                    Text(
+                      'Revisa también tu bandeja de spam si no lo encuentras.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppThemeColors.subtitleColor(context),
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 28),
+                    TextFormField(
+                      controller: _codeController,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: const [AutofillHints.oneTimeCode],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onFieldSubmitted: (_) => _confirm(),
+                      style: TextStyle(color: AppThemeColors.inputText(context)),
+                      decoration: InputDecoration(
+                        hintText: 'Código de verificación',
+                        hintStyle: TextStyle(
+                          color: AppThemeColors.inputHint(context),
+                        ),
+                        filled: true,
+                        fillColor: AppThemeColors.inputFill(context),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      validator: (v) {
+                        final value = (v ?? '').trim();
+                        if (value.isEmpty) return 'Ingresa el código';
+                        if (value.length < 4) return 'Código no válido';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: widget.auth.loading ? null : _confirm,
+                        child: Text(
+                          widget.auth.loading ? 'Confirmando...' : 'Confirmar',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: widget.auth.loading ? null : _confirm,
-                  child: Text(
-                    widget.auth.loading ? 'Confirmando...' : 'Confirmar',
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

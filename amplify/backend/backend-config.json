@@ -51,6 +51,25 @@
       "service": "Lambda"
     }
   },
+  "geo": {
+    "placeIndex4cb8293e": {
+      "accessType": "AuthorizedUsers",
+      "dataProvider": "HERE",
+      "dataSourceIntendedUse": "SingleUse",
+      "dependsOn": [
+        {
+          "attributes": [
+            "UserPoolId"
+          ],
+          "category": "auth",
+          "resourceName": "encuentrameboed4663da"
+        }
+      ],
+      "isDefault": true,
+      "providerPlugin": "awscloudformation",
+      "service": "PlaceIndex"
+    }
+  },
   "parameters": {
     "AMPLIFY_function_encuentrameApi_bedrockModelId": {
       "usedBy": [
@@ -69,6 +88,14 @@
       ]
     },
     "AMPLIFY_function_encuentrameApi_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "encuentrameApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_encuentrameApi_locationPlaceIndexName": {
       "usedBy": [
         {
           "category": "function",

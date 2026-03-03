@@ -20,6 +20,7 @@ const {
 } = require('@aws-sdk/client-rekognition');
 
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { LocationClient, SearchPlaceIndexForPositionCommand } = require('@aws-sdk/client-location');
 
 const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
 const BUCKET_NAME = process.env.BUCKET_NAME;
@@ -27,19 +28,19 @@ const STALLS_TABLE = process.env.STALLS_TABLE;
 const OPENINGLOGS_TABLE = process.env.OPENINGLOGS_TABLE;
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || '';
+const LOCATION_PLACE_INDEX_NAME = process.env.LOCATION_PLACE_INDEX_NAME || '';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
   marshallOptions: { removeUndefinedValues: true }
 });
 const rek = new RekognitionClient({ region: REGION });
 const bedrock = new BedrockRuntimeClient({ region: REGION });
+const location = new LocationClient({ region: REGION });
 
 function jsonBody(event) { try { return event.body ? JSON.parse(event.body) : {}; } catch { return {}; } }
 function nowIso() { return new Date().toISOString(); }
 function uuid() { return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'); }
 
-// IAM: cognitoIdentityId / identityId
-// User Pools: sub
 function callerId(caller) {
   return (
     caller?.sub ||
@@ -64,15 +65,11 @@ async function assertOwnsStall(userId, stallId) {
   return !!res.Item;
 }
 
-/* =========================
-   S3 key normalization (fix public/public etc.)
-========================= */
-
 function normalizeS3Key(k) {
   let key = String(k || '').trim();
   if (!key) return key;
   if (key.startsWith('/')) key = key.slice(1);
-  key = key.replace(/\/{2,}/g, '/'); // collapse //
+  key = key.replace(/\/{2,}/g, '/');
   if (key.startsWith('public/public/')) key = key.replace('public/public/', 'public/');
   return key;
 }
@@ -83,14 +80,8 @@ function candidateKeys(k) {
   const push = (x) => { if (x && !out.includes(x)) out.push(x); };
 
   push(key);
-
-  // si el key vino como "vendor/x.jpg" pero el bucket lo guarda como public/vendor/...
   if (!key.startsWith('public/')) push(`public/${key}`);
-
-  // si el key vino como public/vendor/... pero Amplify lo guardó como public/public/vendor/...
   if (key.startsWith('public/')) push(`public/public/${key.slice('public/'.length)}`);
-
-  // si el key vino como public/public/... pero en realidad era public/...
   if (key.startsWith('public/public/')) push(key.replace('public/public/', 'public/'));
 
   return out.slice(0, 4);
@@ -101,16 +92,8 @@ function isResourceNotFound(e) {
 }
 
 function awsDetails(e) {
-  return {
-    name: e?.name,
-    message: e?.message,
-    status: e?.$metadata?.httpStatusCode
-  };
+  return { name: e?.name, message: e?.message, status: e?.$metadata?.httpStatusCode };
 }
-
-/* =========================
-   Rekognition with fallback keys
-========================= */
 
 async function detectProductsLabelsWithKey(productsPhotoKey) {
   const tries = candidateKeys(productsPhotoKey);
@@ -167,9 +150,39 @@ async function detectModerationWithKey(stallPhotoKey) {
   throw lastErr;
 }
 
-/* =========================
-   Inventory: normalization + reconciliation
-========================= */
+async function reverseGeocode(lat, lng) {
+  if (!LOCATION_PLACE_INDEX_NAME) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  try {
+    const out = await location.send(new SearchPlaceIndexForPositionCommand({
+      IndexName: LOCATION_PLACE_INDEX_NAME,
+      Position: [lng, lat],
+      MaxResults: 1
+    }));
+
+    const place = out?.Results?.[0]?.Place || null;
+    if (!place) return null;
+
+    const address = {
+      label: place.Label || null,
+      street: place.Street || null,
+      neighborhood: place.Neighborhood || null,
+      municipality: place.Municipality || null,
+      subRegion: place.SubRegion || null,
+      region: place.Region || null,
+      country: place.Country || null,
+      postalCode: place.PostalCode || null,
+    };
+
+    return { label: place.Label || null, address };
+  } catch (e) {
+    console.log('LOCATION_ERROR', awsDetails(e));
+    return null;
+  }
+}
+
+/* Inventario (igual que ya tenías) */
 
 function fallbackInventoryParse(raw) {
   const parts = raw.split(',').map(x => x.trim()).filter(Boolean);
@@ -248,7 +261,7 @@ function labelMatchesItem(canonical, labels) {
 
 function reconcileInventory(itemsFromText, labels) {
   const out = [];
-  const seen = new Map(); // canonical -> index
+  const seen = new Map();
 
   for (const it of (itemsFromText || [])) {
     const canonical = normalizeCanonical(it.canonical || it.name || '');
@@ -308,10 +321,6 @@ function reconcileInventory(itemsFromText, labels) {
 
   return { items: out, visionOnly };
 }
-
-/* =========================
-   Bedrock inventory extraction
-========================= */
 
 async function bedrockInventory(rawText, labels) {
   if (!BEDROCK_MODEL_ID) return null;
@@ -390,10 +399,6 @@ ${JSON.stringify(labels || [])}
   }
 }
 
-/* =========================
-   Products upsert (catalog per stall)
-========================= */
-
 async function upsertProductsFromInventory({ stallId, items, now }) {
   if (!PRODUCTS_TABLE) return;
   if (!items || !items.length) return;
@@ -440,9 +445,7 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
   }
 }
 
-/* =========================
-   CRUD: stalls (igual que tenías)
-========================= */
+/* CRUD stalls */
 
 async function list({ caller }) {
   const userId = callerId(caller);
@@ -494,6 +497,7 @@ async function list({ caller }) {
       isOpen: !!currentOpen,
       currentLat: prof?.currentLat ?? null,
       currentLng: prof?.currentLng ?? null,
+      currentAddressLabel: prof?.currentAddressLabel ?? null,
       updatedAt: prof?.updatedAt ?? null
     };
   });
@@ -524,7 +528,11 @@ async function create({ event, caller }) {
       active: true,
       createdAt: now,
       updatedAt: now,
-      currentOpen: null
+      currentOpen: null,
+      currentLat: null,
+      currentLng: null,
+      currentAddressLabel: null,
+      currentAddress: null
     }
   }));
 
@@ -605,7 +613,6 @@ async function remove({ stallId, caller }) {
 
   const stall = prof.Item || null;
   if (!stall) return bad(404, 'NOT_FOUND', 'Puesto no existe');
-
   if (stall.currentOpen) return bad(400, 'STALL_OPEN', 'Cierra el puesto antes de eliminar');
 
   await ddb.send(new DeleteCommand({
@@ -621,18 +628,14 @@ async function remove({ stallId, caller }) {
   return ok({ ok: true });
 }
 
-/* =========================
-   Lifecycle: open / current / close / history
-========================= */
+/* Lifecycle */
 
 async function open({ event, caller }) {
   const userId = callerId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
   if (!STALLS_TABLE || !OPENINGLOGS_TABLE || !BUCKET_NAME) {
-    return bad(500, 'ENV_MISSING', 'Faltan env vars (tables/bucket)', JSON.stringify({
-      STALLS_TABLE, OPENINGLOGS_TABLE, BUCKET_NAME
-    }));
+    return bad(500, 'ENV_MISSING', 'Faltan env vars (tables/bucket)');
   }
 
   const body = jsonBody(event);
@@ -649,21 +652,9 @@ async function open({ event, caller }) {
   const lng = Number(body.lng);
   const accuracy = Number(body.accuracy || 0);
 
-  // ✅ normalize keys aquí
   let stallPhotoKey = normalizeS3Key(body.stallPhotoKey);
   let productsPhotoKey = normalizeS3Key(body.productsPhotoKey);
   const inventoryText = String(body.inventoryText || '').trim();
-
-  console.log('OPEN keys/env', {
-    stallId,
-    BUCKET_NAME,
-    STALLS_TABLE,
-    OPENINGLOGS_TABLE,
-    PRODUCTS_TABLE,
-    BEDROCK_MODEL_ID,
-    stallPhotoKey,
-    productsPhotoKey
-  });
 
   if (!stallPhotoKey || !productsPhotoKey) return bad(400, 'MISSING_PHOTOS', 'Faltan fotos');
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return bad(400, 'MISSING_LOCATION', 'Falta ubicación');
@@ -671,6 +662,8 @@ async function open({ event, caller }) {
 
   const now = nowIso();
   const openSk = `OPEN#${now}#${uuid()}`;
+
+  const geo = await reverseGeocode(lat, lng);
 
   let labels = [];
   let moderation = [];
@@ -684,7 +677,6 @@ async function open({ event, caller }) {
     labels = labelsRes.labels;
     moderation = modRes.moderation;
 
-    // ✅ guarda el key que realmente existe
     productsPhotoKey = labelsRes.keyUsed;
     stallPhotoKey = modRes.keyUsed;
   } catch (e) {
@@ -708,7 +700,7 @@ async function open({ event, caller }) {
   try {
     inv = await bedrockInventory(inventoryText, labels);
   } catch (e) {
-    console.log('BEDROCK_ERROR (fallback to parser)', awsDetails(e));
+    console.log('BEDROCK_ERROR', awsDetails(e));
     inv = null;
   }
   if (!inv) inv = fallbackInventoryParse(inventoryText);
@@ -718,15 +710,37 @@ async function open({ event, caller }) {
   try {
     await upsertProductsFromInventory({ stallId, items: reconciled.items, now });
   } catch (e) {
-    console.log('UPSERT_PRODUCTS_ERROR (ignored for MVP)', awsDetails(e));
+    console.log('UPSERT_PRODUCTS_ERROR', awsDetails(e));
   }
 
   await ddb.send(new UpdateCommand({
     TableName: STALLS_TABLE,
     Key: { pk: pkStall(stallId), sk: 'PROFILE' },
-    UpdateExpression: 'SET vendorUserId=:u, #name=:n, currentOpen=:o, currentLat=:lat, currentLng=:lng, updatedAt=:now',
+    UpdateExpression: `
+      SET vendorUserId=:u,
+          #name=:n,
+          currentOpen=:o,
+          currentLat=:lat,
+          currentLng=:lng,
+          currentAddressLabel=:al,
+          currentAddress=:a,
+          gsi1pk=:gpk,
+          gsi1sk=:gsk,
+          updatedAt=:now
+    `,
     ExpressionAttributeNames: { '#name': 'name' },
-    ExpressionAttributeValues: { ':u': userId, ':n': stallName, ':o': openSk, ':lat': lat, ':lng': lng, ':now': now }
+    ExpressionAttributeValues: {
+      ':u': userId,
+      ':n': stallName,
+      ':o': openSk,
+      ':lat': lat,
+      ':lng': lng,
+      ':al': geo?.label ?? null,
+      ':a': geo?.address ?? null,
+      ':gpk': 'OPEN',
+      ':gsk': `OPEN#${now}#${stallId}`,
+      ':now': now
+    }
   }));
 
   await ddb.send(new PutCommand({
@@ -738,6 +752,8 @@ async function open({ event, caller }) {
       status: flagged ? 'REVIEW' : 'OPEN',
       openedAt: now,
       lat, lng, accuracy,
+      addressLabel: geo?.label ?? null,
+      address: geo?.address ?? null,
       stallPhotoKey,
       productsPhotoKey,
       rekognitionLabels: labels,
@@ -754,6 +770,13 @@ async function open({ event, caller }) {
     status: flagged ? 'REVIEW' : 'OPEN',
     labels,
     moderation,
+    location: {
+      lat,
+      lng,
+      accuracy,
+      addressLabel: geo?.label ?? null,
+      address: geo?.address ?? null
+    },
     inventory: {
       items: reconciled.items,
       visionOnly: reconciled.visionOnly
@@ -826,7 +849,7 @@ async function close({ stallId, caller }) {
   await ddb.send(new UpdateCommand({
     TableName: STALLS_TABLE,
     Key: { pk: pkStall(stallId), sk: 'PROFILE' },
-    UpdateExpression: 'SET currentOpen=:n, updatedAt=:u',
+    UpdateExpression: 'REMOVE gsi1pk, gsi1sk SET currentOpen=:n, updatedAt=:u',
     ExpressionAttributeValues: { ':n': null, ':u': now }
   }));
 

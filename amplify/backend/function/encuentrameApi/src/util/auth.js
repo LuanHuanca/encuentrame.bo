@@ -1,19 +1,29 @@
-/* eslint-disable */
+'use strict';
+
 function getCaller(event) {
   const claims =
     event?.requestContext?.authorizer?.claims ||
     event?.requestContext?.authorizer?.jwt?.claims ||
     null;
 
-  if (claims?.sub) {
-    return { userId: claims.sub, email: claims.email || null };
-  }
+  const identity = event?.requestContext?.identity || null;
 
-  // fallback IAM identity id (si algún día lo usas)
-  const identityId = event?.requestContext?.identity?.cognitoIdentityId || null;
-  if (identityId) return { userId: identityId, email: null };
+  if (claims) return { ...claims, _identity: identity };
+  if (event?.requestContext?.authorizer) return { ...event.requestContext.authorizer, _identity: identity };
+  if (identity) return identity;
 
   return null;
 }
 
-module.exports = { getCaller };
+function getUserId(caller) {
+  return (
+    caller?.sub ||
+    caller?.userId ||
+    caller?.identityId ||
+    caller?.cognitoIdentityId ||
+    caller?._identity?.cognitoIdentityId ||
+    null
+  );
+}
+
+module.exports = { getCaller, getUserId };

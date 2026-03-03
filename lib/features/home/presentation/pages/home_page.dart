@@ -3,7 +3,9 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
+import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
+import '../../../../shared/widgets/feedback/app_snackbar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,14 +14,13 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
-  final api = RestClient();
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+  final RestClient api = RestClient();
 
   bool loading = true;
   String? _userName;
-  String _role = '';
   String? _error;
+
   late final AnimationController _animController;
   late final Animation<double> _fadeAnim;
 
@@ -55,29 +56,32 @@ class _HomePageState extends State<HomePage>
       }
 
       final me = await api.get('/users/me');
-      final role = (me['role'] as String?) ?? '';
       final name = me['name']?.toString();
 
       if (!mounted) return;
 
-      if (role.isEmpty) {
-        Navigator.pushReplacementNamed(context, AppRoutes.roleSelection);
-        return;
-      }
-
       setState(() {
-        _role = role;
         _userName = name;
         loading = false;
       });
-      _animController.forward();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          loading = false;
-        });
-      }
+
+      _animController.forward(from: 0);
+    } on ApiClientException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return;
+      setState(() {
+        _error = UserFriendlyMessages.fromApiError(e);
+        loading = false;
+      });
+      AppSnackbar.error(context, _error!);
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return;
+      setState(() {
+        _error = UserFriendlyMessages.fromGenericError(e);
+        loading = false;
+      });
+      AppSnackbar.error(context, _error!);
     }
   }
 
@@ -101,129 +105,101 @@ class _HomePageState extends State<HomePage>
         child: SafeArea(
           child: loading
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          color: AppColors.blueNeon,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Cargando...',
-                        style: TextStyle(color: subColor, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _run,
-                  color: AppColors.bluePrimary,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    child: FadeTransition(
-                      opacity: _fadeAnim,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 12),
-                          Text(
-                            _userName != null && _userName!.isNotEmpty
-                                ? 'Hola, ${_userName!.split(' ').first}'
-                                : 'Inicio',
-                            style: Theme.of(context).textTheme.headlineMedium
-                                ?.copyWith(
-                                  color: titleColor,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Explora puestos y productos del mercado.',
-                                  style: TextStyle(
-                                    color: subColor,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                              if (_role == 'BUYER')
-                                Chip(
-                                  label: const Text('Comprador'),
-                                  backgroundColor: AppColors.blueNeon
-                                      .withValues(alpha: 0.2),
-                                  padding: EdgeInsets.zero,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              if (_role == 'VENDOR')
-                                Chip(
-                                  label: const Text('Vendedor'),
-                                  backgroundColor: AppColors.orangeBright
-                                      .withValues(alpha: 0.2),
-                                  padding: EdgeInsets.zero,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 28),
-                          if (_role == 'VENDOR') ...[
-                            _HomeCard(
-                              icon: Icons.storefront_rounded,
-                              iconColor: AppColors.orangeBright,
-                              title: 'Mis puestos',
-                              subtitle:
-                                  'Administra tus puestos, abre, cierra y gestiona productos.',
-                              onTap: () => Navigator.pushNamedAndRemoveUntil(
-                                context,
-                                AppRoutes.stalls,
-                                (r) => false,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          _HomeCard(
-                            icon: Icons.storefront_rounded,
-                            iconColor: AppColors.blueNeon,
-                            title: 'Modo comprador',
-                            subtitle:
-                                'Próximamente podrás ver puestos abiertos y comprar.',
-                          ),
-                          const SizedBox(height: 16),
-                          _HomeCard(
-                            icon: Icons.explore_rounded,
-                            iconColor: AppColors.orangeBright,
-                            title: 'Explorar',
-                            subtitle: 'Encuentra lo que buscas cerca de ti.',
-                          ),
-                          if (_error != null) ...[
-                            const SizedBox(height: 24),
-                            Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                'Error al cargar. Desliza para reintentar.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: subColor, fontSize: 14),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 100),
-                        ],
-                      ),
-                    ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: AppColors.blueNeon,
                   ),
                 ),
+                const SizedBox(height: 20),
+                Text(
+                  'Cargando...',
+                  style: TextStyle(color: subColor, fontSize: 16),
+                ),
+              ],
+            ),
+          )
+              : RefreshIndicator(
+            onRefresh: _run,
+            color: AppColors.bluePrimary,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 12),
+                    Text(
+                      _userName != null && _userName!.trim().isNotEmpty
+                          ? 'Hola, ${_userName!.trim().split(' ').first}'
+                          : 'Inicio',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: titleColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Compra o vende con la misma cuenta.',
+                      style: TextStyle(color: subColor, fontSize: 16),
+                    ),
+                    const SizedBox(height: 28),
+
+                    _HomeCard(
+                      icon: Icons.storefront_rounded,
+                      iconColor: AppColors.orangeBright,
+                      title: 'Mis puestos',
+                      subtitle:
+                      'Crea, abre y gestiona tus puestos con ubicación, fotos e inventario.',
+                      onTap: () => Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        AppRoutes.stalls,
+                            (r) => false,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _HomeCard(
+                      icon: Icons.shopping_bag_rounded,
+                      iconColor: AppColors.blueNeon,
+                      title: 'Comprar',
+                      subtitle:
+                      'Explora puestos abiertos cerca de ti (próximo).',
+                    ),
+                    const SizedBox(height: 16),
+
+                    _HomeCard(
+                      icon: Icons.explore_rounded,
+                      iconColor: AppColors.orangeBright,
+                      title: 'Explorar',
+                      subtitle: 'Encuentra lo que buscas cerca de ti.',
+                    ),
+
+                    if (_error != null) ...[
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Error al cargar. Desliza para reintentar.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: subColor, fontSize: 14),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 100),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

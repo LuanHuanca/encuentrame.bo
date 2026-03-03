@@ -11,16 +11,16 @@ class AuthController extends ChangeNotifier {
   bool loading = false;
   String? error;
 
-  Future<T?> _wrap<T>(Future<T> Function() fn) async {
+  Future<T?> _run<T>(Future<T> Function() task) async {
     loading = true;
     error = null;
     notifyListeners();
+
     try {
-      return await fn();
+      return await task();
     } catch (e, stackTrace) {
       UserFriendlyMessages.logToConsole(e, stackTrace);
       error = e.toString();
-      notifyListeners();
       return null;
     } finally {
       loading = false;
@@ -29,59 +29,59 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<bool> isSignedIn() async {
-    final r = await _wrap(() => _repo.isSignedIn());
-    return r ?? false;
+    final result = await _run(() => _repo.isSignedIn());
+    return result ?? false;
   }
 
   Future<bool> signIn(String email, String password) async {
-    final r = await _wrap(() async {
-      await _repo.signIn(email: email, password: password);
+    final result = await _run(() async {
+      await _repo.signIn(email: email.trim(), password: password);
       return true;
     });
-    return r ?? false;
+    return result ?? false;
   }
 
   Future<bool> signUp(String email, String password) async {
-    final r = await _wrap(() async {
-      await _repo.signUp(email: email, password: password);
+    final result = await _run(() async {
+      await _repo.signUp(email: email.trim(), password: password);
       return true;
     });
-    return r ?? false;
+    return result ?? false;
   }
 
   Future<bool> confirmSignUp(String email, String code) async {
-    final r = await _wrap(() async {
-      await _repo.confirmSignUp(email: email, code: code);
+    final result = await _run(() async {
+      await _repo.confirmSignUp(email: email.trim(), code: code.trim());
       return true;
     });
-    return r ?? false;
+    return result ?? false;
   }
 
   Future<bool> startResetPassword(String email) async {
-    final r = await _wrap(() async {
-      await _repo.startResetPassword(email: email);
+    final result = await _run(() async {
+      await _repo.startResetPassword(email: email.trim());
       return true;
     });
-    return r ?? false;
+    return result ?? false;
   }
 
   Future<bool> confirmResetPassword(
-    String email,
-    String code,
-    String newPassword,
-  ) async {
-    final r = await _wrap(() async {
+      String email,
+      String code,
+      String newPassword,
+      ) async {
+    final result = await _run(() async {
       await _repo.confirmResetPassword(
-        email: email,
-        code: code,
+        email: email.trim(),
+        code: code.trim(),
         newPassword: newPassword,
       );
       return true;
     });
-    return r ?? false;
+    return result ?? false;
   }
 
   Future<void> signOut() async {
-    await _wrap(() => _repo.signOut());
+    await _run(() => _repo.signOut());
   }
 }

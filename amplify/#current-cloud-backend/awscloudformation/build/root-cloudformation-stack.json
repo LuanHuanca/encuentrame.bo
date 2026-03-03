@@ -305,9 +305,10 @@
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-346d372f4a4741694377-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-6e372b4b38476c516d45-build.zip",
           "bedrockModelId": "amazon.titan-text-lite-v1",
           "productsTable": "products-dev",
+          "locationPlaceIndexName": "placeIndex4cb8293e-dev",
           "env": "dev"
         }
       }
@@ -397,6 +398,31 @@
           "partitionKeyType": "S",
           "sortKeyName": "sk",
           "sortKeyType": "S",
+          "env": "dev"
+        }
+      }
+    },
+    "geoplaceIndex4cb8293e": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/geo/placeIndex4cb8293e-cloudformation-template.json",
+        "Parameters": {
+          "authRoleName": {
+            "Ref": "AuthRoleName"
+          },
+          "unauthRoleName": {
+            "Ref": "UnauthRoleName"
+          },
+          "indexName": "placeIndex4cb8293e",
+          "dataProvider": "Here",
+          "dataSourceIntendedUse": "SingleUse",
+          "isDefault": true,
+          "authencuentrameboed4663daUserPoolId": {
+            "Fn::GetAtt": [
+              "authencuentrameboed4663da",
+              "Outputs.UserPoolId"
+            ]
+          },
           "env": "dev"
         }
       }

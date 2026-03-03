@@ -26,6 +26,13 @@ export type AmplifyDependentResourcesAttributes = {
       "Region": "string"
     }
   },
+  "geo": {
+    "placeIndex4cb8293e": {
+      "Arn": "string",
+      "Name": "string",
+      "Region": "string"
+    }
+  },
   "storage": {
     "dynamo324f6f26": {
       "Arn": "string",

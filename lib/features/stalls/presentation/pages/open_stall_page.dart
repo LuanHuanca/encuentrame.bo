@@ -2,12 +2,15 @@ import 'dart:io';
 
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../app/theme.dart';
+import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
+import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import 'stall_dashboard_page.dart';
 
 class OpenStallPage extends StatefulWidget {
@@ -25,45 +28,73 @@ class OpenStallPage extends StatefulWidget {
 }
 
 class _OpenStallPageState extends State<OpenStallPage> {
-  final _api = RestClient();
-  final _speech = SpeechToText();
-  final _picker = ImagePicker();
-  final _uuid = const Uuid();
+  final RestClient _api = RestClient();
+  final SpeechToText _speech = SpeechToText();
+  final ImagePicker _picker = ImagePicker();
+  final Uuid _uuid = const Uuid();
 
-  final _inventoryCtrl = TextEditingController();
+  final TextEditingController _inventoryController = TextEditingController();
 
-  // Fotos locales (preview)
   File? _stallPhotoFile;
   File? _productsPhotoFile;
 
-  // Keys S3 (lo que manda al backend)
   String? _stallPhotoKey;
   String? _productsPhotoKey;
 
-  // Ubicación
-  Position? _pos;
+  Position? _position;
 
-  bool _loading = false;
-  String? _error;
+  bool _gettingLocation = false;
+  bool _uploadingStall = false;
+  bool _uploadingProducts = false;
+  bool _opening = false;
 
   bool _speechReady = false;
   bool _listening = false;
+
+  String? _error;
+
+  bool get _hasLocation => _position != null;
+  bool get _hasStallPhoto => _stallPhotoKey != null;
+  bool get _hasProductsPhoto => _productsPhotoKey != null;
+
+  bool get _canOpen =>
+      !_opening &&
+          !_uploadingStall &&
+          !_uploadingProducts &&
+          !_gettingLocation &&
+          _hasLocation &&
+          _hasStallPhoto &&
+          _hasProductsPhoto &&
+          _inventoryController.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _initSpeech();
-    _ensureLocation(); // intenta sacar ubicación apenas entra
+    _ensureLocation();
+  }
+
+  @override
+  void dispose() {
+    _inventoryController.dispose();
+    _speech.stop();
+    super.dispose();
   }
 
   Future<void> _initSpeech() async {
-    final ok = await _speech.initialize();
-    if (mounted) setState(() => _speechReady = ok);
+    try {
+      final ok = await _speech.initialize();
+      if (!mounted) return;
+      setState(() => _speechReady = ok);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _speechReady = false);
+    }
   }
 
   Future<void> _toggleMic() async {
     if (!_speechReady) {
-      setState(() => _error = 'Speech-to-text no disponible en este dispositivo');
+      setState(() => _error = 'La función de voz no está disponible.');
       return;
     }
 
@@ -75,16 +106,25 @@ class _OpenStallPageState extends State<OpenStallPage> {
 
     setState(() => _error = null);
 
+    String? localeId;
+    try {
+      final locales = await _speech.locales();
+      final spanish = locales.where((l) => l.localeId.startsWith('es')).toList();
+      if (spanish.isNotEmpty) localeId = spanish.first.localeId;
+    } catch (_) {}
+
     await _speech.listen(
-      localeId: 'es_ES', // si el device soporta es_BO lo cambiamos luego
+      localeId: localeId,
       onResult: (res) {
         final text = res.recognizedWords.trim();
         if (text.isEmpty) return;
-        _inventoryCtrl.text = text;
-        _inventoryCtrl.selection = TextSelection.fromPosition(
-          TextPosition(offset: _inventoryCtrl.text.length),
+
+        _inventoryController.text = text;
+        _inventoryController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _inventoryController.text.length),
         );
-        setState(() {});
+
+        if (mounted) setState(() {});
       },
     );
 
@@ -92,10 +132,15 @@ class _OpenStallPageState extends State<OpenStallPage> {
   }
 
   Future<void> _ensureLocation() async {
+    setState(() {
+      _gettingLocation = true;
+      _error = null;
+    });
+
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
       if (!enabled) {
-        setState(() => _error = 'Activa GPS para continuar');
+        setState(() => _error = 'Activa el GPS para continuar.');
         return;
       }
 
@@ -103,12 +148,15 @@ class _OpenStallPageState extends State<OpenStallPage> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
+
       if (perm == LocationPermission.denied) {
-        setState(() => _error = 'Permiso de ubicación denegado');
+        setState(() => _error = 'Permiso de ubicación denegado.');
         return;
       }
+
       if (perm == LocationPermission.deniedForever) {
-        setState(() => _error = 'Permiso de ubicación bloqueado. Habilítalo en ajustes.');
+        setState(() =>
+        _error = 'Permiso de ubicación bloqueado. Habilítalo en ajustes.');
         return;
       }
 
@@ -116,9 +164,14 @@ class _OpenStallPageState extends State<OpenStallPage> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      if (mounted) setState(() => _pos = pos);
-    } catch (e) {
-      setState(() => _error = 'No pude obtener ubicación: $e');
+      if (!mounted) return;
+      setState(() => _position = pos);
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return;
+      setState(() => _error = 'No pude obtener ubicación.');
+    } finally {
+      if (mounted) setState(() => _gettingLocation = false);
     }
   }
 
@@ -131,25 +184,26 @@ class _OpenStallPageState extends State<OpenStallPage> {
       );
       if (x == null) return null;
       return File(x.path);
-    } catch (e) {
-      setState(() => _error = 'No pude abrir la cámara: $e');
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return null;
+      setState(() => _error = 'No pude abrir la cámara.');
       return null;
     }
   }
 
   Future<String> _uploadToS3({
     required File file,
-    required String kind, // 'stall' | 'products'
+    required String kind,
   }) async {
-    // Key estilo: public/vendor/<timestamp>_<uuid>_<kind>.jpg
-    final key = 'public/vendor/${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
+    final key =
+        'public/vendor/${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
 
     final result = await Amplify.Storage.uploadFile(
       localFile: AWSFile.fromPath(file.path),
       path: StoragePath.fromString(key),
     ).result;
 
-    // result.uploadedItem.path == key (en v2 suele devolverte lo mismo)
     return result.uploadedItem.path;
   }
 
@@ -161,19 +215,22 @@ class _OpenStallPageState extends State<OpenStallPage> {
 
     setState(() {
       _stallPhotoFile = f;
-      _stallPhotoKey = null; // reset si re-toma foto
+      _stallPhotoKey = null;
+      _uploadingStall = true;
     });
 
     try {
-      setState(() => _loading = true);
       final key = await _uploadToS3(file: f, kind: 'stall');
-      if (mounted) setState(() => _stallPhotoKey = key);
-    } on StorageException catch (e) {
-      setState(() => _error = 'Error subiendo foto del puesto: ${e.message}');
-    } catch (e) {
-      setState(() => _error = 'Error subiendo foto del puesto: $e');
+      if (!mounted) return;
+      setState(() => _stallPhotoKey = key);
+    } on StorageException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) setState(() => _error = 'Error subiendo foto del puesto.');
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) setState(() => _error = 'Error subiendo foto del puesto.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _uploadingStall = false);
     }
   }
 
@@ -186,43 +243,54 @@ class _OpenStallPageState extends State<OpenStallPage> {
     setState(() {
       _productsPhotoFile = f;
       _productsPhotoKey = null;
+      _uploadingProducts = true;
     });
 
     try {
-      setState(() => _loading = true);
       final key = await _uploadToS3(file: f, kind: 'products');
-      if (mounted) setState(() => _productsPhotoKey = key);
-    } on StorageException catch (e) {
-      setState(() => _error = 'Error subiendo foto de productos: ${e.message}');
-    } catch (e) {
-      setState(() => _error = 'Error subiendo foto de productos: $e');
+      if (!mounted) return;
+      setState(() => _productsPhotoKey = key);
+    } on StorageException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) setState(() => _error = 'Error subiendo foto de productos.');
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) setState(() => _error = 'Error subiendo foto de productos.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _uploadingProducts = false);
     }
   }
 
-  bool get _hasLocation => _pos != null;
-  bool get _hasStallPhoto => _stallPhotoKey != null;
-  bool get _hasProductsPhoto => _productsPhotoKey != null;
-
   Future<void> _open() async {
+    FocusScope.of(context).unfocus();
+
     setState(() {
-      _loading = true;
+      _opening = true;
       _error = null;
     });
 
     try {
-      final inventoryText = _inventoryCtrl.text.trim();
+      final inventoryText = _inventoryController.text.trim();
 
-      if (widget.stallId.trim().isEmpty) throw ApiClientException('stallId requerido');
-      if (!_hasLocation) throw ApiClientException('Falta ubicación (activa GPS)');
-      if (!_hasStallPhoto) throw ApiClientException('Falta foto del puesto (subida)');
-      if (!_hasProductsPhoto) throw ApiClientException('Falta foto de productos (subida)');
-      if (inventoryText.isEmpty) throw ApiClientException('Falta inventario (voz o texto)');
+      if (widget.stallId.trim().isEmpty) {
+        throw ApiClientException('stallId requerido');
+      }
+      if (!_hasLocation) {
+        throw ApiClientException('Falta ubicación (activa GPS)');
+      }
+      if (!_hasStallPhoto) {
+        throw ApiClientException('Falta foto del puesto (subida)');
+      }
+      if (!_hasProductsPhoto) {
+        throw ApiClientException('Falta foto de productos (subida)');
+      }
+      if (inventoryText.isEmpty) {
+        throw ApiClientException('Falta inventario (voz o texto)');
+      }
 
-      final lat = _pos!.latitude;
-      final lng = _pos!.longitude;
-      final acc = _pos!.accuracy;
+      final lat = _position!.latitude;
+      final lng = _position!.longitude;
+      final acc = _position!.accuracy;
 
       await _api.post('/stalls/open', {
         'stallId': widget.stallId,
@@ -237,6 +305,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
 
       if (!mounted) return;
 
+      AppSnackbar.success(context, 'Puesto abierto.');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -246,32 +315,36 @@ class _OpenStallPageState extends State<OpenStallPage> {
           ),
         ),
       );
-    } on ApiClientException catch (e) {
+    } on ApiClientException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return;
       setState(() => _error = e.message);
-    } catch (e) {
-      setState(() => _error = 'Error inesperado: $e');
+      AppSnackbar.error(context, e.message);
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (!mounted) return;
+      setState(() => _error = 'Error inesperado.');
+      AppSnackbar.error(context, 'Error inesperado.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _opening = false);
     }
   }
 
   @override
-  void dispose() {
-    _inventoryCtrl.dispose();
-    _speech.stop();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final canOpen = !_loading && _hasLocation && _hasStallPhoto && _hasProductsPhoto && _inventoryCtrl.text.trim().isNotEmpty;
+    final title = AppThemeColors.titleColor(context);
+    final sub = AppThemeColors.subtitleColor(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.stallName.isEmpty ? 'Abrir puesto' : 'Abrir: ${widget.stallName}'),
+        title: Text(
+          widget.stallName.isEmpty ? 'Abrir puesto' : 'Abrir • ${widget.stallName}',
+        ),
         actions: [
           IconButton(
-            onPressed: _loading ? null : _ensureLocation,
+            onPressed: (_opening || _uploadingStall || _uploadingProducts)
+                ? null
+                : _ensureLocation,
             icon: const Icon(Icons.my_location),
             tooltip: 'Actualizar ubicación',
           ),
@@ -280,89 +353,118 @@ class _OpenStallPageState extends State<OpenStallPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusRow(
-            title: 'Ubicación',
+          Text(
+            'Checklist para abrir',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: title,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ubicación + 2 fotos + inventario. Al abrir, el sistema guardará la dirección usando Amazon Location.',
+            style: TextStyle(color: sub),
+          ),
+          const SizedBox(height: 14),
+
+          _StepCard(
+            title: '1) Ubicación',
             ok: _hasLocation,
-            okText: _pos == null ? '' : 'Lista • ±${_pos!.accuracy.toStringAsFixed(0)}m',
+            busy: _gettingLocation,
+            okText: _position == null
+                ? ''
+                : 'Lista • ±${_position!.accuracy.toStringAsFixed(0)}m',
             badText: 'Falta (activa GPS)',
+            trailing: IconButton(
+              onPressed: _gettingLocation ? null : _ensureLocation,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Actualizar',
+            ),
+            child: _position == null
+                ? null
+                : Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                'lat ${_position!.latitude.toStringAsFixed(6)} • lng ${_position!.longitude.toStringAsFixed(6)}',
+                style: TextStyle(color: sub, fontSize: 13),
+              ),
+            ),
           ),
 
           const SizedBox(height: 12),
 
-          Text('Fotos', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-
-          _PhotoCard(
-            title: 'Puesto / entorno',
+          _PhotoStepCard(
+            title: '2) Foto del puesto / entorno',
             file: _stallPhotoFile,
             ok: _hasStallPhoto,
-            onTake: _loading ? null : _captureStallPhoto,
-            subtitleOk: 'Subida ✅',
-            subtitleBad: 'Toma una foto',
+            busy: _uploadingStall,
+            onTake: (_opening || _uploadingStall) ? null : _captureStallPhoto,
           ),
 
           const SizedBox(height: 10),
 
-          _PhotoCard(
-            title: 'Productos (mesa)',
+          _PhotoStepCard(
+            title: '3) Foto de productos (mesa)',
             file: _productsPhotoFile,
             ok: _hasProductsPhoto,
-            onTake: _loading ? null : _captureProductsPhoto,
-            subtitleOk: 'Subida ✅',
-            subtitleBad: 'Toma una foto',
+            busy: _uploadingProducts,
+            onTake:
+            (_opening || _uploadingProducts) ? null : _captureProductsPhoto,
           ),
 
           const SizedBox(height: 16),
 
-          Text('Inventario', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _inventoryCtrl,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Habla o escribe',
-                    hintText: 'Ej: 2 poleras, 1 gorra, 3 medias...',
-                  ),
-                  onChanged: (_) => setState(() {}),
+          _StepCard(
+            title: '4) Inventario (voz o texto)',
+            ok: _inventoryController.text.trim().isNotEmpty,
+            busy: false,
+            okText: 'Listo',
+            badText: 'Escribe o dicta tu inventario',
+            trailing: IconButton.filledTonal(
+              onPressed:
+              (_opening || _uploadingStall || _uploadingProducts) ? null : _toggleMic,
+              icon: Icon(_listening ? Icons.mic_off : Icons.mic),
+              tooltip: _listening ? 'Detener' : 'Hablar',
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: TextField(
+                controller: _inventoryController,
+                minLines: 3,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Inventario',
+                  hintText: 'Ej: 2 poleras, 1 gorra, 3 medias...',
                 ),
+                onChanged: (_) => setState(() {}),
               ),
-              const SizedBox(width: 10),
-              Column(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: _loading ? null : _toggleMic,
-                    icon: Icon(_listening ? Icons.mic_off : Icons.mic),
-                    tooltip: _listening ? 'Detener' : 'Hablar',
-                  ),
-                  Text(_listening ? 'Grabando' : 'Voz', style: Theme.of(context).textTheme.labelSmall),
-                ],
-              ),
-            ],
+            ),
           ),
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
 
           const SizedBox(height: 18),
 
           FilledButton.icon(
-            onPressed: canOpen ? _open : null,
-            icon: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
-            label: Text(_loading ? 'Abriendo…' : 'Abrir hoy'),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            'Checklist: ubicación + 2 fotos + inventario.',
-            style: Theme.of(context).textTheme.bodySmall,
+            onPressed: _canOpen ? _open : null,
+            icon: _opening
+                ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.play_arrow),
+            label: Text(_opening ? 'Abriendo…' : 'Abrir ahora'),
           ),
         ],
       ),
@@ -370,73 +472,102 @@ class _OpenStallPageState extends State<OpenStallPage> {
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({
+class _StepCard extends StatelessWidget {
+  const _StepCard({
     required this.title,
     required this.ok,
+    required this.busy,
     required this.okText,
     required this.badText,
+    required this.trailing,
+    this.child,
   });
 
   final String title;
   final bool ok;
+  final bool busy;
   final String okText;
   final String badText;
+  final Widget trailing;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final sub = AppThemeColors.subtitleColor(context);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withOpacity(0.6),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(ok ? Icons.check_circle : Icons.error_outline, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: t.titleSmall),
-                const SizedBox(height: 2),
-                Text(ok ? okText : badText, style: t.bodySmall),
-              ],
-            ),
+          Row(
+            children: [
+              if (busy)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(ok ? Icons.check_circle : Icons.error_outline, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: t.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      ok ? okText : badText,
+                      style: t.bodySmall?.copyWith(color: sub),
+                    ),
+                  ],
+                ),
+              ),
+              trailing,
+            ],
           ),
+          if (child != null) child!,
         ],
       ),
     );
   }
 }
 
-class _PhotoCard extends StatelessWidget {
-  const _PhotoCard({
+class _PhotoStepCard extends StatelessWidget {
+  const _PhotoStepCard({
     required this.title,
     required this.file,
     required this.ok,
+    required this.busy,
     required this.onTake,
-    required this.subtitleOk,
-    required this.subtitleBad,
   });
 
   final String title;
   final File? file;
   final bool ok;
+  final bool busy;
   final VoidCallback? onTake;
-  final String subtitleOk;
-  final String subtitleBad;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final sub = AppThemeColors.subtitleColor(context);
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withOpacity(0.6),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -459,12 +590,19 @@ class _PhotoCard extends StatelessWidget {
               children: [
                 Text(title, style: t.titleSmall),
                 const SizedBox(height: 4),
-                Text(ok ? subtitleOk : subtitleBad, style: t.bodySmall),
+                Text(
+                  busy
+                      ? 'Subiendo…'
+                      : ok
+                      ? 'Subida ✅'
+                      : 'Pendiente',
+                  style: t.bodySmall?.copyWith(color: sub),
+                ),
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FilledButton.tonalIcon(
-                    onPressed: onTake,
+                    onPressed: busy ? null : onTake,
                     icon: const Icon(Icons.camera_alt),
                     label: Text(file == null ? 'Tomar foto' : 'Repetir'),
                   ),
@@ -473,7 +611,14 @@ class _PhotoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Icon(ok ? Icons.check_circle : Icons.radio_button_unchecked),
+          if (busy)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(ok ? Icons.check_circle : Icons.radio_button_unchecked),
         ],
       ),
     );

@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
-import '../../features/stalls/presentation/pages/stalls_list_page.dart';
+import '../../features/stalls/presentation/pages/my_stalls_page.dart';
 
-/// Índices de las pestañas del shell principal.
 class MainShellIndex {
   MainShellIndex._();
   static const int home = 0;
@@ -15,8 +14,6 @@ class MainShellIndex {
   static const int profile = 3;
 }
 
-/// Shell principal con barra de navegación inferior curva.
-/// Contiene: Inicio, Puestos, Más, Perfil.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.initialIndex = 0});
 
@@ -28,17 +25,18 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late int _currentIndex;
-  late final List<Widget> _pages;
   late final PageController _pageController;
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 3);
     _pageController = PageController(initialPage: _currentIndex);
+
     _pages = [
       const _PageWithBottomPadding(child: HomePage()),
-      const _PageWithBottomPadding(child: StallsListPage()),
+      const _PageWithBottomPadding(child: MyStallsPage()),
       const _PageWithBottomPadding(child: _MorePlaceholderPage()),
       const _PageWithBottomPadding(child: ProfilePage()),
     ];
@@ -65,10 +63,9 @@ class _MainShellState extends State<MainShell> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final barColor = isDark ? AppColors.blueSurface : Colors.white;
     final buttonBgColor = AppColors.bluePrimary;
-    final iconColor = isDark
-        ? AppColors.textMutedDark
-        : AppColors.textMutedLight;
-    final activeIconColor = Colors.white;
+    final iconColor =
+    isDark ? AppColors.textMutedDark : AppColors.textMutedLight;
+    const activeIconColor = Colors.white;
 
     return Scaffold(
       extendBody: true,
@@ -122,7 +119,6 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// Evita que el contenido quede oculto tras la barra curva.
 class _PageWithBottomPadding extends StatelessWidget {
   const _PageWithBottomPadding({required this.child});
   final Widget child;

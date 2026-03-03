@@ -19,34 +19,41 @@ class MyStallsPage extends StatefulWidget {
 }
 
 class _MyStallsPageState extends State<MyStallsPage> {
-  final _api = RestClient();
+  final RestClient _api = RestClient();
 
-  bool _loading = false;
+  bool _loading = true;
+  bool _actionBusy = false;
   List<Map<String, dynamic>> _stalls = [];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(showLoader: true);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({required bool showLoader}) async {
+    if (showLoader) setState(() => _loading = true);
 
     try {
       final res = await _api.get('/stalls');
       final list = (res['stalls'] as List?)?.cast<dynamic>() ?? const [];
-      _stalls = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final mapped =
+      list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+
+      if (!mounted) return;
+      setState(() => _stalls = mapped);
     } on ApiClientException catch (e) {
       UserFriendlyMessages.logToConsole(e);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+      }
     } catch (e, stackTrace) {
       UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showLoader) setState(() => _loading = false);
     }
   }
 
@@ -55,7 +62,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
       context,
       MaterialPageRoute(builder: (_) => const StallFormPage()),
     );
-    if (ok == true) _load();
+    if (ok == true) _load(showLoader: true);
   }
 
   Future<void> _edit(Map<String, dynamic> stall) async {
@@ -68,7 +75,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
         ),
       ),
     );
-    if (ok == true) _load();
+    if (ok == true) _load(showLoader: true);
   }
 
   Future<void> _close(Map<String, dynamic> stall) async {
@@ -78,195 +85,32 @@ class _MyStallsPageState extends State<MyStallsPage> {
     final ok = await AppConfirmDialog.show(
       context,
       title: 'Cerrar puesto',
-      message: '¿Cerrar "$name" por hoy? No podrás reabrir hasta mañana.',
+      message: '¿Cerrar "$name"? Podrás volver a abrir cuando quieras.',
       confirmLabel: 'Cerrar',
       cancelLabel: 'Cancelar',
     );
     if (ok != true) return;
 
-    setState(() => _loading = true);
+    setState(() => _actionBusy = true);
     try {
       await _api.post('/stalls/$stallId/close', {});
-      if (mounted)
-        AppSnackbar.success(context, 'Puesto cerrado correctamente.');
-      await _load();
+      if (!mounted) return;
+      AppSnackbar.success(context, 'Puesto cerrado.');
+      await _load(showLoader: false);
+      if (mounted) setState(() {});
     } on ApiClientException catch (e) {
       UserFriendlyMessages.logToConsole(e);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+      }
     } catch (e, stackTrace) {
       UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _actionBusy = false);
     }
-  }
-
-  void _showStallActions(BuildContext context, Map<String, dynamic> stall) {
-    final stallId = (stall['stallId'] ?? '').toString();
-    final stallName = (stall['name'] ?? 'Sin nombre').toString();
-    final isOpen = stall['isOpen'] == true;
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.25,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (_, scrollController) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                child: Text(
-                  stallName,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const Divider(height: 1),
-              Flexible(
-                child: ListView(
-                  controller: scrollController,
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 16),
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.play_circle_outline),
-                      title: const Text('Abrir hoy'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        if (!isOpen && stallId.isNotEmpty) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => OpenStallPage(
-                                stallId: stallId,
-                                stallName: stallName,
-                              ),
-                            ),
-                          ).then((_) => _load());
-                        }
-                      },
-                      enabled: !isOpen && stallId.isNotEmpty,
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.history),
-                      title: const Text('Historial'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StallOpeningsPage(
-                              stallId: stallId,
-                              stallName: stallName,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.inventory_2_outlined),
-                      title: const Text('Productos'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StallProductsPage(
-                              stallId: stallId,
-                              stallName: stallName,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.dashboard_outlined),
-                      title: Text(isOpen ? 'Dashboard' : 'Ver último'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => isOpen
-                                ? StallDashboardPage(
-                                    stallId: stallId,
-                                    stallName: stallName,
-                                  )
-                                : StallOpeningsPage(
-                                    stallId: stallId,
-                                    stallName: stallName,
-                                  ),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: Icon(
-                        Icons.stop_circle_outlined,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Cerrar puesto',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      onTap: isOpen
-                          ? () {
-                              Navigator.pop(ctx);
-                              _close(stall);
-                            }
-                          : null,
-                      enabled: isOpen,
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.edit_outlined),
-                      title: const Text('Editar'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _edit(stall);
-                      },
-                    ),
-                    ListTile(
-                      leading: Icon(
-                        Icons.delete_outline,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Eliminar',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _delete(stall);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _delete(Map<String, dynamic> stall) async {
@@ -277,29 +121,214 @@ class _MyStallsPageState extends State<MyStallsPage> {
       context,
       title: 'Eliminar puesto',
       message:
-          '¿Eliminar "$name"? Esta acción no se puede deshacer. El puesto debe estar cerrado.',
+      '¿Eliminar "$name"? Esta acción no se puede deshacer.\n\nPara eliminarlo, el puesto debe estar cerrado.',
       confirmLabel: 'Eliminar',
       cancelLabel: 'Cancelar',
       isDestructive: true,
     );
     if (ok != true) return;
 
-    setState(() => _loading = true);
+    setState(() => _actionBusy = true);
     try {
       await _api.del('/stalls/$stallId');
-      if (mounted) AppSnackbar.success(context, 'Puesto eliminado.');
-      await _load();
+      if (!mounted) return;
+      AppSnackbar.success(context, 'Puesto eliminado.');
+      await _load(showLoader: false);
     } on ApiClientException catch (e) {
       UserFriendlyMessages.logToConsole(e);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+      }
     } catch (e, stackTrace) {
       UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted)
+      if (mounted) {
         AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _actionBusy = false);
     }
+  }
+
+  Future<void> _openFlow(Map<String, dynamic> stall) async {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Mi puesto').toString();
+    final isOpen = stall['isOpen'] == true;
+
+    if (stallId.isEmpty) return;
+
+    if (isOpen) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StallDashboardPage(
+            stallId: stallId,
+            stallName: stallName,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OpenStallPage(
+          stallId: stallId,
+          stallName: stallName,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    _load(showLoader: true);
+  }
+
+  void _showMoreActions(Map<String, dynamic> stall) {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Sin nombre').toString();
+    final isOpen = stall['isOpen'] == true;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .dividerColor
+                        .withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    stallName,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+
+                ListTile(
+                  leading: Icon(isOpen
+                      ? Icons.dashboard_outlined
+                      : Icons.play_circle_outline),
+                  title: Text(isOpen ? 'Ir al panel' : 'Abrir puesto'),
+                  subtitle: Text(
+                    isOpen
+                        ? 'Ver inventario, ubicación, fotos y cerrar.'
+                        : 'Ubicación + 2 fotos + inventario.',
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openFlow(stall);
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('Productos'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StallProductsPage(
+                          stallId: stallId,
+                          stallName: stallName,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Historial de aperturas'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StallOpeningsPage(
+                          stallId: stallId,
+                          stallName: stallName,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                const Divider(height: 1),
+
+                ListTile(
+                  enabled: isOpen,
+                  leading: Icon(
+                    Icons.stop_circle_outlined,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Cerrar puesto',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  onTap: isOpen
+                      ? () {
+                    Navigator.pop(ctx);
+                    _close(stall);
+                  }
+                      : null,
+                ),
+
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Editar nombre'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _edit(stall);
+                  },
+                ),
+
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Eliminar',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _delete(stall);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -311,51 +340,101 @@ class _MyStallsPageState extends State<MyStallsPage> {
         title: const Text('Mis puestos'),
         actions: [
           IconButton(
-            onPressed: _loading ? null : _load,
+            onPressed: (_loading || _actionBusy) ? null : () => _load(showLoader: true),
             icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _loading ? null : _create,
+        onPressed: (_loading || _actionBusy) ? null : _create,
         child: const Icon(Icons.add),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Toca un puesto para gestionarlo.',
-                    style: TextStyle(color: sub, fontSize: 14),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: _stalls.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No tienes puestos aún.',
-                              style: TextStyle(color: sub),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _stalls.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (_, i) {
-                              final s = _stalls[i];
-                              return _StallCard(
-                                stall: s,
-                                onManage: () => _showStallActions(context, s),
-                                loading: _loading,
-                              );
-                            },
-                          ),
-                  ),
-                ],
+      body: RefreshIndicator(
+        onRefresh: () => _load(showLoader: false),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Abrir o gestionar tus puestos desde aquí.',
+                style: TextStyle(color: sub, fontSize: 14),
               ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _stalls.isEmpty
+                    ? _EmptyState(
+                  subtitleColor: sub,
+                  onCreate: (_actionBusy) ? null : _create,
+                )
+                    : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _stalls.length,
+                  separatorBuilder: (_, __) =>
+                  const SizedBox(height: 12),
+                  itemBuilder: (_, i) {
+                    final stall = _stalls[i];
+                    return _StallCard(
+                      stall: stall,
+                      busy: _actionBusy,
+                      onPrimary: () => _openFlow(stall),
+                      onMore: () => _showMoreActions(stall),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.subtitleColor,
+    required this.onCreate,
+  });
+
+  final Color subtitleColor;
+  final VoidCallback? onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.storefront_outlined, size: 56, color: subtitleColor),
+            const SizedBox(height: 14),
+            Text(
+              'Aún no tienes puestos',
+              style: TextStyle(
+                color: AppThemeColors.titleColor(context),
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Crea uno para empezar a publicar y abrir con ubicación, fotos e inventario.',
+              style: TextStyle(color: subtitleColor),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add),
+              label: const Text('Crear puesto'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -364,20 +443,27 @@ class _MyStallsPageState extends State<MyStallsPage> {
 class _StallCard extends StatelessWidget {
   const _StallCard({
     required this.stall,
-    required this.onManage,
-    required this.loading,
+    required this.busy,
+    required this.onPrimary,
+    required this.onMore,
   });
 
   final Map<String, dynamic> stall;
-  final VoidCallback onManage;
-  final bool loading;
+  final bool busy;
+  final VoidCallback onPrimary;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
     final title = AppThemeColors.titleColor(context);
     final sub = AppThemeColors.subtitleColor(context);
+
     final stallName = (stall['name'] ?? 'Sin nombre').toString();
     final isOpen = stall['isOpen'] == true;
+    final address = (stall['currentAddressLabel'] ?? '').toString().trim();
+
+    final primaryLabel = isOpen ? 'Panel' : 'Abrir';
+    final primaryIcon = isOpen ? Icons.dashboard_outlined : Icons.play_arrow;
 
     return Card(
       elevation: 0,
@@ -387,46 +473,78 @@ class _StallCard extends StatelessWidget {
           color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
         ),
       ),
-      child: InkWell(
-        onTap: loading ? null : onManage,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      stallName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 17,
-                        color: title,
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    stallName,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      color: title,
                     ),
-                    const SizedBox(height: 4),
-                    Chip(
-                      label: Text(
-                        isOpen ? 'Abierto' : 'Cerrado',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: isOpen
-                          ? AppColors.orangeBright.withValues(alpha: 0.15)
-                          : sub.withValues(alpha: 0.15),
-                    ),
-                  ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 10),
+                Chip(
+                  label: Text(
+                    isOpen ? 'Abierto' : 'Cerrado',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: isOpen
+                      ? AppColors.statusOpen.withValues(alpha: 0.15)
+                      : sub.withValues(alpha: 0.12),
+                ),
+              ],
+            ),
+            if (isOpen && address.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.place_outlined, size: 16, color: sub),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      address,
+                      style: TextStyle(color: sub, fontSize: 13),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
-              Icon(Icons.chevron_right_rounded, color: sub, size: 28),
             ],
-          ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: busy ? null : onPrimary,
+                    icon: Icon(primaryIcon),
+                    label: Text(primaryLabel),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton(
+                  onPressed: busy ? null : onMore,
+                  icon: const Icon(Icons.more_horiz_rounded),
+                  tooltip: 'Más acciones',
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
+

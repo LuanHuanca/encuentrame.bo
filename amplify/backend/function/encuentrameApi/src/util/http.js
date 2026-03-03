@@ -1,11 +1,10 @@
-/* eslint-disable */
+'use strict';
 
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers':
-      'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
   };
 }
 
@@ -13,20 +12,19 @@ function ok(body = {}, statusCode = 200) {
   return {
     statusCode,
     headers: corsHeaders(),
-    body: JSON.stringify(body),
+    body: JSON.stringify(body)
   };
 }
 
 function bad(statusCode = 400, code = 'ERROR', message = 'Error', details) {
   const err = { code, message };
-  if (details !== undefined && details !== null && String(details).length) {
+  if (details !== undefined && details !== null && String(details).trim().length) {
     err.details = String(details);
   }
-
   return {
     statusCode,
     headers: corsHeaders(),
-    body: JSON.stringify({ error: err }),
+    body: JSON.stringify({ error: err })
   };
 }
 
@@ -34,8 +32,17 @@ function options() {
   return {
     statusCode: 204,
     headers: corsHeaders(),
-    body: '',
+    body: ''
   };
 }
 
-module.exports = { corsHeaders, ok, bad, options };
+function parseJsonBody(event) {
+  try {
+    if (!event || !event.body) return {};
+    return JSON.parse(event.body);
+  } catch {
+    return {};
+  }
+}
+
+module.exports = { corsHeaders, ok, bad, options, parseJsonBody };

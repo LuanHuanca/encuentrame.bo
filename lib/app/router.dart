@@ -8,7 +8,6 @@ import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/pages/reset_password_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
 
-import '../features/onboarding/presentation/pages/role_selection_page.dart';
 import '../features/profile/presentation/pages/profile_page.dart';
 import 'shell/main_shell.dart';
 
@@ -16,14 +15,15 @@ class AppRoutes {
   AppRoutes._();
 
   static const String home = '/';
+  static const String stalls = '/stalls';
+
   static const String login = '/login';
   static const String signup = '/signup';
   static const String confirmSignup = '/confirm-signup';
   static const String forgotPassword = '/forgot-password';
   static const String resetPassword = '/reset-password';
+
   static const String profile = '/profile';
-  static const String roleSelection = '/onboarding/role';
-  static const String stalls = '/stalls';
 }
 
 class AppRouter {
@@ -62,8 +62,6 @@ class AppRouter {
           builder: (_) => ConfirmSignupPage(
             auth: AppDependencies.auth,
             email: (args['email'] as String?) ?? '',
-            pendingRole: (args['role'] as String?) ?? '',
-            pendingName: (args['name'] as String?) ?? '',
           ),
         );
 
@@ -87,12 +85,6 @@ class AppRouter {
         return MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => const ProfilePage(),
-        );
-
-      case AppRoutes.roleSelection:
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => const RoleSelectionPage(),
         );
 
       default:
