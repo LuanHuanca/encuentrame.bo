@@ -305,7 +305,7 @@
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-532b4f64733845593758-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-4a4c6f472f794b6a4b43-build.zip",
           "bedrockModelId": "amazon.titan-text-lite-v1",
           "productsTable": "products-dev",
           "locationPlaceIndexName": "placeIndex4cb8293e-dev",
