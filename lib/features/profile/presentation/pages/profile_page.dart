@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/router.dart';
+import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/config/app_dependencies.dart';
 import '../../../favorites/presentation/pages/favorites_page.dart';
 import '../../../purchases/presentation/pages/my_purchases_page.dart';
+import '../../../settings/presentation/pages/settings_page.dart';
 
 /// Pantalla de perfil de usuario.
 class ProfilePage extends StatefulWidget {
@@ -18,6 +20,7 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animController;
   late final Animation<double> _fadeAnim;
+  bool _switchLoading = false;
 
   @override
   void initState() {
@@ -113,6 +116,148 @@ class _ProfilePageState extends State<ProfilePage>
                     style: TextStyle(color: subColor, fontSize: 15),
                   ),
                   const SizedBox(height: 24),
+
+                  // Switch de vista vendedor/comprador
+                  Builder(
+                    builder: (context) {
+                      final role = MainShell.of(context)?.role ?? 'BUYER';
+                      final isVendorView = role == 'VENDOR';
+                      final title = isVendorView
+                          ? 'Viendo como vendedor'
+                          : 'Viendo como comprador';
+                      final subtitle = isVendorView
+                          ? 'Activa el switch para ver la app como comprador.'
+                          : 'Activa el switch para ver la app como vendedor.';
+
+                      return Opacity(
+                        opacity: _switchLoading ? 0.6 : 1,
+                        child: IgnorePointer(
+                          ignoring: _switchLoading,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: fill,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.swap_horiz_rounded,
+                                  color: AppColors.blueNeon,
+                                  size: 26,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style: TextStyle(
+                                          color: titleColor,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        subtitle,
+                                        style: TextStyle(
+                                          color: subColor,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Switch(
+                                  value: isVendorView,
+                                  activeColor: AppColors.blueNeon,
+                                  onChanged: (value) async {
+                                    final shell = MainShell.of(context);
+                                    if (shell == null) return;
+
+                                    setState(() => _switchLoading = true);
+
+                                    // Pantalla de carga modal para resaltar el cambio
+                                    showDialog<void>(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (ctx) {
+                                        return Center(
+                                          child: Container(
+                                            padding: const EdgeInsets.all(24),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(ctx)
+                                                  .colorScheme
+                                                  .surface
+                                                  .withValues(alpha: 0.92),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const SizedBox(
+                                                  width: 40,
+                                                  height: 40,
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                                const SizedBox(height: 16),
+                                                Text(
+                                                  value
+                                                      ? 'Cambiando a vista vendedor...'
+                                                      : 'Cambiando a vista comprador...',
+                                                  style: TextStyle(
+                                                    color:
+                                                        AppThemeColors.titleColor(
+                                                          ctx,
+                                                        ),
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 600),
+                                    );
+
+                                    if (!mounted) return;
+
+                                    if (value) {
+                                      shell.setRole('VENDOR');
+                                    } else {
+                                      shell.setRole('BUYER');
+                                    }
+
+                                    if (mounted) {
+                                      Navigator.of(
+                                        context,
+                                        rootNavigator: true,
+                                      ).pop();
+                                      setState(() => _switchLoading = false);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
                   _ProfileTile(
                     icon: Icons.shopping_bag_outlined,
                     title: 'Mis compras',
@@ -138,8 +283,13 @@ class _ProfilePageState extends State<ProfilePage>
                   _ProfileTile(
                     icon: Icons.settings_outlined,
                     title: 'Ajustes',
-                    subtitle: 'Tema y notificaciones',
-                    onTap: () {},
+                    subtitle: 'Tema y preferencias',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsPage()),
+                      );
+                    },
                   ),
                   const SizedBox(height: 32),
                   SizedBox(
