@@ -4,6 +4,8 @@ import '../../../../app/theme.dart';
 import '../widgets/buyer_explore_card.dart';
 import '../widgets/buyer_scaffold_gradient.dart';
 import 'buyer_home_discover_page.dart';
+import 'buyer_explore_products_page.dart';
+import 'buyer_map_page.dart';
 
 class BuyerExplorePage extends StatelessWidget {
   const BuyerExplorePage({super.key});
@@ -56,7 +58,14 @@ class BuyerExplorePage extends StatelessWidget {
                 title: 'Seguir explorando productos',
                 subtitle:
                     'Próximamente: ver recomendaciones personalizadas según lo que compres.',
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BuyerExploreProductsPage(),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 16),
               BuyerExploreCard(
@@ -65,7 +74,14 @@ class BuyerExplorePage extends StatelessWidget {
                 title: 'Mapa de puestos',
                 subtitle:
                     'Más adelante aquí verás un mapa con los puestos abiertos usando servicios de mapas/GPS de AWS.',
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BuyerMapPage(),
+                    ),
+                  );
+                },
               ),
             ],
           ),

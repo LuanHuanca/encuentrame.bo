@@ -330,8 +330,9 @@ class _OsmLocationCard extends StatelessWidget {
     final lng = (opening['lng'] as num?)?.toDouble();
     final acc = (opening['accuracy'] as num?)?.toDouble();
 
-    if (lat == null || lng == null)
+    if (lat == null || lng == null) {
       return Text('Sin ubicación', style: TextStyle(color: sub));
+    }
 
     final center = LatLng(lat, lng);
 
@@ -399,8 +400,9 @@ class _InventorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sub = AppThemeColors.subtitleColor(context);
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return Text('$title: $empty', style: TextStyle(color: sub));
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -429,8 +431,9 @@ class _InventorySection extends StatelessWidget {
             final meta = <String>[];
             meta.add('x$qty $unit');
             if (conf.isNotEmpty) meta.add('conf: $conf');
-            if (vision.isNotEmpty)
+            if (vision.isNotEmpty) {
               meta.add('foto: ${vision.take(3).join(', ')}');
+            }
             if (suggested) meta.add('sugerido');
 
             return ListTile(

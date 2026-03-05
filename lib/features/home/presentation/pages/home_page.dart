@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
 import '../../../../app/router.dart';
-import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
@@ -157,13 +156,12 @@ class _HomePageState extends State<HomePage>
                             style: TextStyle(color: subColor, fontSize: 16),
                           ),
                           const SizedBox(height: 28),
-
                           _HomeCard(
                             icon: Icons.storefront_rounded,
                             iconColor: AppColors.orangeBright,
-                            title: 'Mis puestos',
+                            title: 'Vender: Mis puestos',
                             subtitle:
-                                'Crea, abre y gestiona tus puestos con ubicación, fotos e inventario.',
+                                'Crea, abre y gestiona puestos con ubicación, fotos e inventario.',
                             onTap: () => Navigator.pushNamedAndRemoveUntil(
                               context,
                               AppRoutes.stalls,
@@ -171,35 +169,26 @@ class _HomePageState extends State<HomePage>
                             ),
                           ),
                           const SizedBox(height: 16),
-
                           _HomeCard(
-                            icon: Icons.shopping_bag_rounded,
+                            icon: Icons.search_rounded,
                             iconColor: AppColors.blueNeon,
-                            title: 'Comprar',
-                            subtitle: 'Explora puestos abiertos cerca de ti.',
-                            onTap: () {
-                              final shell = MainShell.of(context);
-                              // Cambia la vista a modo comprador y navega a la pestaña de explorar.
-                              shell?.setRole('BUYER');
-                              shell?.setIndex(MainShellIndex.more);
-                            },
+                            title: 'Comprar: Buscar producto',
+                            subtitle:
+                                'Ej: “zapatos” y te mostramos puestos abiertos cerca.',
+                            onTap: () => Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppRoutes.market,
+                              (r) => false,
+                            ),
                           ),
                           const SizedBox(height: 16),
-
-                          // Card de explorar solo visible cuando estamos viendo como comprador.
-                          if (MainShell.of(context)?.role != 'VENDOR')
-                            _HomeCard(
-                              icon: Icons.explore_rounded,
-                              iconColor: AppColors.orangeBright,
-                              title: 'Explorar',
-                              subtitle: 'Encuentra lo que buscas cerca de ti.',
-                              onTap: () {
-                                final shell = MainShell.of(context);
-                                shell?.setRole('BUYER');
-                                shell?.setIndex(MainShellIndex.more);
-                              },
-                            ),
-
+                          _HomeCard(
+                            icon: Icons.explore_rounded,
+                            iconColor: AppColors.orangeBright,
+                            title: 'Explorar',
+                            subtitle:
+                                'Lo conectamos después con filtros y mapa.',
+                          ),
                           if (_error != null) ...[
                             const SizedBox(height: 24),
                             Padding(
@@ -211,7 +200,6 @@ class _HomePageState extends State<HomePage>
                               ),
                             ),
                           ],
-
                           const SizedBox(height: 100),
                         ],
                       ),

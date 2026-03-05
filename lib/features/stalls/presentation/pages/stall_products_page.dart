@@ -233,7 +233,7 @@ class _StallProductsPageState extends State<StallProductsPage> {
               )
                   : ListView.separated(
                 itemCount: data.length,
-                separatorBuilder: (_, __) =>
+                separatorBuilder: (_, _) =>
                 const SizedBox(height: 10),
                 itemBuilder: (_, i) {
                   final p = data[i];

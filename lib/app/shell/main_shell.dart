@@ -1,5 +1,5 @@
-import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 
 import '../theme.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
@@ -44,13 +44,12 @@ class MainShellIndex {
   MainShellIndex._();
   static const int home = 0;
   static const int stalls = 1;
-  static const int more = 2;
+  static const int market = 2;
   static const int profile = 3;
 }
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.initialIndex = 0});
-
   final int initialIndex;
 
   /// Obtiene el [MainShellScope] más cercano en el árbol.
@@ -109,15 +108,7 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  void _onTap(int index) {
-    if (index == _currentIndex) return;
-    setState(() => _currentIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
+  // _onTap ya no se usa; la navegación se hace vía _setIndex.
 
   @override
   Widget build(BuildContext context) {
@@ -150,7 +141,7 @@ class _MainShellState extends State<MainShell> {
           backgroundColor: Colors.transparent,
           animationCurve: Curves.easeInOutCubic,
           animationDuration: const Duration(milliseconds: 350),
-          onTap: _onTap,
+          onTap: _setIndex,
           items: _buildBottomItems(
             role: _role,
             activeIconColor: activeIconColor,

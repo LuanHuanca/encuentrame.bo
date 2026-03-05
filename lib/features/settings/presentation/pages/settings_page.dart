@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
 import '../../../../app/theme_mode_scope.dart';
 import '../../../../core/config/app_dependencies.dart';
+import 'role_switch_splash_screen.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({
+    super.key,
+    required this.currentRole,
+    required this.onRoleChanged,
+  });
+
+  final String currentRole;
+  final ValueChanged<String> onRoleChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -15,10 +24,11 @@ class SettingsPage extends StatelessWidget {
     final fill = AppThemeColors.inputFill(context);
     final themeScope = ThemeModeScope.of(context);
     final themeMode = themeScope?.themeMode ?? ThemeMode.system;
+    
+    final isVendorRole = currentRole == 'VENDOR';
 
     // Por ahora tomamos nombre/email básicos desde AuthController si están disponibles.
     final _ = AppDependencies.auth;
-    // Por ahora no tenemos getters dedicados en AuthController; usamos placeholders.
     const email = '';
     const displayName = '';
 
@@ -48,81 +58,97 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: fill,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        themeMode == ThemeMode.dark
-                            ? Icons.dark_mode_rounded
-                            : themeMode == ThemeMode.light
-                            ? Icons.light_mode_rounded
-                            : Icons.brightness_6_rounded,
-                        color: AppColors.blueNeon,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tema de la app',
-                              style: TextStyle(
-                                color: titleColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _themeLabel(themeMode),
-                              style: TextStyle(color: subColor, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: ThemeMode.light,
-                            label: Text('Claro'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.dark,
-                            label: Text('Oscuro'),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.system,
-                            label: Text('Sistema'),
-                          ),
-                        ],
-                        selected: {themeMode},
-                        onSelectionChanged: (values) {
-                          final next = values.first;
-                          if (next == themeMode) return;
-                          if (themeScope?.onToggleTheme == null) return;
+                
+                // Tema de la app
+                _buildThemeTile(
+                  context: context,
+                  themeMode: themeMode,
+                  titleColor: titleColor,
+                  subColor: subColor,
+                  fill: fill,
+                  onThemeChanged: (next) {
+                    if (next == themeMode) return;
+                    if (themeScope?.onToggleTheme == null) return;
+                    for (var i = 0; i < 3; i++) {
+                      if (ThemeModeScope.of(context)?.themeMode == next) break;
+                      themeScope!.onToggleTheme();
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
 
-                          // ThemeModeScope solo expone toggle; llamamos hasta llegar al valor.
-                          // Para evitar loops, limitamos a 3 pasos.
-                          for (var i = 0; i < 3; i++) {
-                            if (ThemeModeScope.of(context)?.themeMode == next) {
-                              break;
-                            }
-                            themeScope!.onToggleTheme();
-                          }
+                // Modo Vendedor/Comprador
+                _buildSwitchTile(
+                  icon: isVendorRole ? Icons.storefront_rounded : Icons.shopping_bag_rounded,
+                  title: 'Modo Vendedor',
+                  subtitle: 'Cambiar a herramientas de venta',
+                  value: isVendorRole,
+                  onChanged: (val) {
+                    final targetRole = val ? 'VENDOR' : 'BUYER';
+                    if (currentRole == targetRole) return;
+                    
+                    Navigator.of(context).push(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => 
+                            RoleSwitchSplashScreen(
+                              targetRole: targetRole,
+                              onRoleChanged: onRoleChanged,
+                            ),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(opacity: animation, child: child);
                         },
                       ),
-                    ],
-                  ),
+                    );
+                  },
+                  titleColor: titleColor,
+                  subColor: subColor,
+                  fill: fill,
+                ),
+                const SizedBox(height: 12),
+
+                // Notificaciones
+                _buildSwitchTile(
+                  icon: Icons.notifications_active_rounded,
+                  title: 'Notificaciones',
+                  subtitle: 'Recibir alertas y mensajes',
+                  value: true,
+                  onChanged: (val) {}, // Placeholder
+                  titleColor: titleColor,
+                  subColor: subColor,
+                  fill: fill,
+                ),
+                const SizedBox(height: 12),
+
+                // Ubicación
+                _buildSwitchTile(
+                  icon: Icons.location_on_rounded,
+                  title: 'Ubicación',
+                  subtitle: 'Permitir acceso a la ubicación',
+                  value: false,
+                  onChanged: (val) {}, // Placeholder
+                  titleColor: titleColor,
+                  subColor: subColor,
+                  fill: fill,
+                ),
+                const SizedBox(height: 12),
+
+                // Idioma
+                _buildDropdownTile<String>(
+                  icon: Icons.language_rounded,
+                  title: 'Idioma',
+                  subtitle: 'Selecciona tu idioma preferido',
+                  value: 'es',
+                  items: const [
+                    DropdownMenuItem(value: 'es', child: Text('Español')),
+                    DropdownMenuItem(value: 'en', child: Text('Inglés')),
+                  ],
+                  onChanged: (val) {}, // Placeholder
+                  titleColor: titleColor,
+                  subColor: subColor,
+                  fill: fill,
                 ),
                 const SizedBox(height: 28),
+
                 Text(
                   'Información de la cuenta',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -159,10 +185,200 @@ class SettingsPage extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 48),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildThemeTile({
+    required BuildContext context,
+    required ThemeMode themeMode,
+    required Color titleColor,
+    required Color subColor,
+    required Color fill,
+    required void Function(ThemeMode) onThemeChanged,
+  }) {
+    IconData icon;
+    if (themeMode == ThemeMode.dark) {
+      icon = Icons.dark_mode_rounded;
+    } else if (themeMode == ThemeMode.light) {
+      icon = Icons.light_mode_rounded;
+    } else {
+      icon = Icons.brightness_6_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.blueNeon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tema de la app',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _themeLabel(themeMode),
+                  style: TextStyle(color: subColor, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<ThemeMode>(
+              value: themeMode,
+              icon: Icon(Icons.keyboard_arrow_down_rounded, color: subColor),
+              borderRadius: BorderRadius.circular(12),
+              dropdownColor: fill,
+              style: TextStyle(
+                color: titleColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              onChanged: (ThemeMode? next) {
+                if (next != null) {
+                  onThemeChanged(next);
+                }
+              },
+              items: const [
+                DropdownMenuItem(value: ThemeMode.light, child: Text('Claro')),
+                DropdownMenuItem(value: ThemeMode.dark, child: Text('Oscuro')),
+                DropdownMenuItem(
+                  value: ThemeMode.system,
+                  child: Text('Sistema'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required Color titleColor,
+    required Color subColor,
+    required Color fill,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.blueNeon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: subColor, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: AppColors.blueNeon,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdownTile<T>({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+    required Color titleColor,
+    required Color subColor,
+    required Color fill,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.blueNeon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: subColor, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              icon: Icon(Icons.keyboard_arrow_down_rounded, color: subColor),
+              borderRadius: BorderRadius.circular(12),
+              dropdownColor: fill,
+              style: TextStyle(
+                color: titleColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              onChanged: onChanged,
+              items: items,
+            ),
+          ),
+        ],
       ),
     );
   }

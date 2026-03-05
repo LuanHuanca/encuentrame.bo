@@ -150,7 +150,7 @@ class _StallOpeningsPageState extends State<StallOpeningsPage> {
               )
             : ListView.separated(
                 itemCount: _openings.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (_, i) {
                   final o = _openings[i];
                   final status = (o['status'] ?? '').toString().toUpperCase();
@@ -343,7 +343,7 @@ class _ThumbnailState extends State<_Thumbnail> {
           ? Image.network(
               _url!,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _placeholder(),
+              errorBuilder: (_, _, _) => _placeholder(),
             )
           : _placeholder(),
     );
