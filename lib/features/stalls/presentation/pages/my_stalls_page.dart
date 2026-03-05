@@ -8,8 +8,6 @@ import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import 'open_stall_page.dart';
 import 'stall_dashboard_page.dart';
 import 'stall_form_page.dart';
-import 'stall_openings_page.dart';
-import 'stall_products_page.dart';
 
 class MyStallsPage extends StatefulWidget {
   const MyStallsPage({super.key});
@@ -22,7 +20,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
   final RestClient _api = RestClient();
 
   bool _loading = true;
-  bool _actionBusy = false;
+  bool _busy = false;
   List<Map<String, dynamic>> _stalls = [];
 
   @override
@@ -32,26 +30,21 @@ class _MyStallsPageState extends State<MyStallsPage> {
   }
 
   Future<void> _load({required bool showLoader}) async {
-    if (showLoader) setState(() => _loading = true);
+    if (showLoader && mounted) setState(() => _loading = true);
 
     try {
       final res = await _api.get('/stalls');
       final list = (res['stalls'] as List?)?.cast<dynamic>() ?? const [];
-      final mapped =
-      list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final mapped = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
 
       if (!mounted) return;
       setState(() => _stalls = mapped);
-    } on ApiClientException catch (e) {
-      UserFriendlyMessages.logToConsole(e);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-      }
-    } catch (e, stackTrace) {
-      UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-      }
+    } on ApiClientException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
     } finally {
       if (mounted && showLoader) setState(() => _loading = false);
     }
@@ -65,7 +58,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
     if (ok == true) _load(showLoader: true);
   }
 
-  Future<void> _edit(Map<String, dynamic> stall) async {
+  Future<void> _editName(Map<String, dynamic> stall) async {
     final ok = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -78,9 +71,9 @@ class _MyStallsPageState extends State<MyStallsPage> {
     if (ok == true) _load(showLoader: true);
   }
 
-  Future<void> _close(Map<String, dynamic> stall) async {
+  Future<void> _closeStall(Map<String, dynamic> stall) async {
     final stallId = (stall['stallId'] ?? '').toString();
-    final name = (stall['name'] ?? '').toString();
+    final name = (stall['name'] ?? 'Mi puesto').toString();
 
     final ok = await AppConfirmDialog.show(
       context,
@@ -91,61 +84,51 @@ class _MyStallsPageState extends State<MyStallsPage> {
     );
     if (ok != true) return;
 
-    setState(() => _actionBusy = true);
+    setState(() => _busy = true);
     try {
       await _api.post('/stalls/$stallId/close', {});
       if (!mounted) return;
       AppSnackbar.success(context, 'Puesto cerrado.');
       await _load(showLoader: false);
-      if (mounted) setState(() {});
-    } on ApiClientException catch (e) {
-      UserFriendlyMessages.logToConsole(e);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-      }
-    } catch (e, stackTrace) {
-      UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-      }
+    } on ApiClientException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
     } finally {
-      if (mounted) setState(() => _actionBusy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _delete(Map<String, dynamic> stall) async {
+  Future<void> _deleteStall(Map<String, dynamic> stall) async {
     final stallId = (stall['stallId'] ?? '').toString();
     final name = (stall['name'] ?? 'Sin nombre').toString();
 
     final ok = await AppConfirmDialog.show(
       context,
       title: 'Eliminar puesto',
-      message:
-      '¿Eliminar "$name"? Esta acción no se puede deshacer.\n\nPara eliminarlo, el puesto debe estar cerrado.',
+      message: '¿Eliminar "$name"? Esta acción no se puede deshacer.\n\nPara eliminarlo, el puesto debe estar cerrado.',
       confirmLabel: 'Eliminar',
       cancelLabel: 'Cancelar',
       isDestructive: true,
     );
     if (ok != true) return;
 
-    setState(() => _actionBusy = true);
+    setState(() => _busy = true);
     try {
       await _api.del('/stalls/$stallId');
       if (!mounted) return;
       AppSnackbar.success(context, 'Puesto eliminado.');
       await _load(showLoader: false);
-    } on ApiClientException catch (e) {
-      UserFriendlyMessages.logToConsole(e);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-      }
-    } catch (e, stackTrace) {
-      UserFriendlyMessages.logToConsole(e, stackTrace);
-      if (mounted) {
-        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-      }
+    } on ApiClientException catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
+    } catch (e, st) {
+      UserFriendlyMessages.logToConsole(e, st);
+      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
     } finally {
-      if (mounted) setState(() => _actionBusy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -160,10 +143,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => StallDashboardPage(
-            stallId: stallId,
-            stallName: stallName,
-          ),
+          builder: (_) => StallDashboardPage(stallId: stallId, stallName: stallName),
         ),
       );
       return;
@@ -172,10 +152,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OpenStallPage(
-          stallId: stallId,
-          stallName: stallName,
-        ),
+        builder: (_) => OpenStallPage(stallId: stallId, stallName: stallName),
       ),
     );
 
@@ -183,8 +160,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
     _load(showLoader: true);
   }
 
-  void _showMoreActions(Map<String, dynamic> stall) {
-    final stallId = (stall['stallId'] ?? '').toString();
+  void _showActions(Map<String, dynamic> stall) {
     final stallName = (stall['name'] ?? 'Sin nombre').toString();
     final isOpen = stall['isOpen'] == true;
 
@@ -206,9 +182,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
                   width: 44,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .dividerColor
-                        .withValues(alpha: 0.6),
+                    color: Theme.of(context).dividerColor.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(99),
                   ),
                 ),
@@ -217,110 +191,51 @@ class _MyStallsPageState extends State<MyStallsPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
                     stallName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                     textAlign: TextAlign.center,
                   ),
                 ),
                 const SizedBox(height: 10),
                 const Divider(height: 1),
-
                 ListTile(
-                  leading: Icon(isOpen
-                      ? Icons.dashboard_outlined
-                      : Icons.play_circle_outline),
+                  leading: Icon(isOpen ? Icons.dashboard_outlined : Icons.play_circle_outline),
                   title: Text(isOpen ? 'Ir al panel' : 'Abrir puesto'),
-                  subtitle: Text(
-                    isOpen
-                        ? 'Ver inventario, ubicación, fotos y cerrar.'
-                        : 'Ubicación + 2 fotos + inventario.',
-                  ),
+                  subtitle: Text(isOpen ? 'Ver productos, ubicación y cerrar.' : 'Ubicación + 2 fotos + inventario.'),
                   onTap: () {
                     Navigator.pop(ctx);
                     _openFlow(stall);
                   },
                 ),
-
-                ListTile(
-                  leading: const Icon(Icons.inventory_2_outlined),
-                  title: const Text('Productos'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StallProductsPage(
-                          stallId: stallId,
-                          stallName: stallName,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('Historial de aperturas'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StallOpeningsPage(
-                          stallId: stallId,
-                          stallName: stallName,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                const Divider(height: 1),
-
-                ListTile(
-                  enabled: isOpen,
-                  leading: Icon(
-                    Icons.stop_circle_outlined,
-                    color: Theme.of(context).colorScheme.error,
+                if (isOpen) ...[
+                  ListTile(
+                    leading: Icon(Icons.stop_circle_outlined, color: Theme.of(context).colorScheme.error),
+                    title: Text('Cerrar puesto', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    onTap: _busy
+                        ? null
+                        : () {
+                      Navigator.pop(ctx);
+                      _closeStall(stall);
+                    },
                   ),
-                  title: Text(
-                    'Cerrar puesto',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  onTap: isOpen
-                      ? () {
-                    Navigator.pop(ctx);
-                    _close(stall);
-                  }
-                      : null,
-                ),
-
+                ],
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: const Text('Editar nombre'),
-                  onTap: () {
+                  onTap: _busy
+                      ? null
+                      : () {
                     Navigator.pop(ctx);
-                    _edit(stall);
+                    _editName(stall);
                   },
                 ),
-
                 ListTile(
-                  leading: Icon(
-                    Icons.delete_outline,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  title: Text(
-                    'Eliminar',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  onTap: () {
+                  leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                  title: Text('Eliminar', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  onTap: _busy
+                      ? null
+                      : () {
                     Navigator.pop(ctx);
-                    _delete(stall);
+                    _deleteStall(stall);
                   },
                 ),
               ],
@@ -340,14 +255,14 @@ class _MyStallsPageState extends State<MyStallsPage> {
         title: const Text('Mis puestos'),
         actions: [
           IconButton(
-            onPressed: (_loading || _actionBusy) ? null : () => _load(showLoader: true),
+            onPressed: (_loading || _busy) ? null : () => _load(showLoader: true),
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: (_loading || _actionBusy) ? null : _create,
+        onPressed: (_loading || _busy) ? null : _create,
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
@@ -360,28 +275,24 @@ class _MyStallsPageState extends State<MyStallsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Abrir o gestionar tus puestos desde aquí.',
+                'Crea, abre y gestiona tus puestos.',
                 style: TextStyle(color: sub, fontSize: 14),
               ),
               const SizedBox(height: 12),
               Expanded(
                 child: _stalls.isEmpty
-                    ? _EmptyState(
-                  subtitleColor: sub,
-                  onCreate: (_actionBusy) ? null : _create,
-                )
+                    ? _EmptyState(subtitleColor: sub, onCreate: _busy ? null : _create)
                     : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: _stalls.length,
-                  separatorBuilder: (_, _) =>
-                  const SizedBox(height: 12),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (_, i) {
                     final stall = _stalls[i];
                     return _StallCard(
                       stall: stall,
-                      busy: _actionBusy,
+                      busy: _busy,
                       onPrimary: () => _openFlow(stall),
-                      onMore: () => _showMoreActions(stall),
+                      onMore: () => _showActions(stall),
                     );
                   },
                 ),
@@ -395,10 +306,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.subtitleColor,
-    required this.onCreate,
-  });
+  const _EmptyState({required this.subtitleColor, required this.onCreate});
 
   final Color subtitleColor;
   final VoidCallback? onCreate;
@@ -423,7 +331,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Crea uno para empezar a publicar y abrir con ubicación, fotos e inventario.',
+              'Crea uno para empezar a vender con ubicación, fotos e inventario.',
               style: TextStyle(color: subtitleColor),
               textAlign: TextAlign.center,
             ),
@@ -469,9 +377,7 @@ class _StallCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
-        ),
+        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -483,21 +389,14 @@ class _StallCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     stallName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      color: title,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: title),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Chip(
-                  label: Text(
-                    isOpen ? 'Abierto' : 'Cerrado',
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  label: Text(isOpen ? 'Abierto' : 'Cerrado', style: const TextStyle(fontSize: 12)),
                   padding: EdgeInsets.zero,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   backgroundColor: isOpen
@@ -537,7 +436,7 @@ class _StallCard extends StatelessWidget {
                 IconButton(
                   onPressed: busy ? null : onMore,
                   icon: const Icon(Icons.more_horiz_rounded),
-                  tooltip: 'Más acciones',
+                  tooltip: 'Acciones',
                 ),
               ],
             ),
@@ -547,4 +446,3 @@ class _StallCard extends StatelessWidget {
     );
   }
 }
-

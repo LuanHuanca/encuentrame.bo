@@ -4,7 +4,7 @@ const config = require('../config');
 const { ok, bad, parseJsonBody } = require('../util/http');
 const { getUserId } = require('../util/auth');
 const { ddb } = require('../services/aws');
-const { GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { GetCommand, QueryCommand, UpdateCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 function pkUser(userId) { return `USER#${userId}`; }
 function pkStall(stallId) { return `STALL#${stallId}`; }
@@ -23,7 +23,6 @@ async function assertOwnsStall(userId, stallId) {
 async function list({ stallId, caller }) {
   const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
-
   if (!config.PRODUCTS_TABLE) return ok({ products: [] });
 
   const owns = await assertOwnsStall(userId, stallId);
@@ -66,6 +65,7 @@ async function update({ stallId, productId, event, caller }) {
   const display = body.display != null ? String(body.display).trim() : null;
   const price = body.price != null ? Number(body.price) : null;
   const active = body.active != null ? !!body.active : null;
+  const lastQty = body.lastQty != null ? Number(body.lastQty) : null;
 
   const sets = [];
   const names = {};
@@ -86,6 +86,11 @@ async function update({ stallId, productId, event, caller }) {
     values[':active'] = active;
     sets.push('#active=:active');
   }
+  if (lastQty !== null && Number.isFinite(lastQty)) {
+    names['#lastQty'] = 'lastQty';
+    values[':lastQty'] = Math.max(0, Math.round(lastQty));
+    sets.push('#lastQty=:lastQty');
+  }
 
   if (!sets.length) return bad(400, 'VALIDATION', 'Nada para actualizar');
 
@@ -101,4 +106,20 @@ async function update({ stallId, productId, event, caller }) {
   return ok({ ok: true });
 }
 
-module.exports = { list, update };
+async function remove({ stallId, productId, caller }) {
+  const userId = getUserId(caller);
+  if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.PRODUCTS_TABLE) return bad(500, 'ENV_MISSING', 'Falta PRODUCTS_TABLE');
+
+  const owns = await assertOwnsStall(userId, stallId);
+  if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
+
+  await ddb.send(new DeleteCommand({
+    TableName: config.PRODUCTS_TABLE,
+    Key: { pk: pkStall(stallId), sk: skProd(productId) }
+  }));
+
+  return ok({ ok: true });
+}
+
+module.exports = { list, update, remove };

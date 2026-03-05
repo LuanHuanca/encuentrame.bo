@@ -145,9 +145,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
       }
 
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
 
       if (perm == LocationPermission.denied) {
         setState(() => _error = 'Permiso de ubicación denegado.');
@@ -155,14 +153,11 @@ class _OpenStallPageState extends State<OpenStallPage> {
       }
 
       if (perm == LocationPermission.deniedForever) {
-        setState(() =>
-        _error = 'Permiso de ubicación bloqueado. Habilítalo en ajustes.');
+        setState(() => _error = 'Permiso de ubicación bloqueado. Habilítalo en ajustes.');
         return;
       }
 
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
 
       if (!mounted) return;
       setState(() => _position = pos);
@@ -192,12 +187,8 @@ class _OpenStallPageState extends State<OpenStallPage> {
     }
   }
 
-  Future<String> _uploadToS3({
-    required File file,
-    required String kind,
-  }) async {
-    final key =
-        'public/vendor/${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
+  Future<String> _uploadToS3({required File file, required String kind}) async {
+    final key = 'public/vendor/${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
 
     final result = await Amplify.Storage.uploadFile(
       localFile: AWSFile.fromPath(file.path),
@@ -272,21 +263,11 @@ class _OpenStallPageState extends State<OpenStallPage> {
     try {
       final inventoryText = _inventoryController.text.trim();
 
-      if (widget.stallId.trim().isEmpty) {
-        throw ApiClientException('stallId requerido');
-      }
-      if (!_hasLocation) {
-        throw ApiClientException('Falta ubicación (activa GPS)');
-      }
-      if (!_hasStallPhoto) {
-        throw ApiClientException('Falta foto del puesto (subida)');
-      }
-      if (!_hasProductsPhoto) {
-        throw ApiClientException('Falta foto de productos (subida)');
-      }
-      if (inventoryText.isEmpty) {
-        throw ApiClientException('Falta inventario (voz o texto)');
-      }
+      if (widget.stallId.trim().isEmpty) throw ApiClientException('stallId requerido');
+      if (!_hasLocation) throw ApiClientException('Falta ubicación (activa GPS)');
+      if (!_hasStallPhoto) throw ApiClientException('Falta foto del puesto (subida)');
+      if (!_hasProductsPhoto) throw ApiClientException('Falta foto de productos (subida)');
+      if (inventoryText.isEmpty) throw ApiClientException('Falta inventario (voz o texto)');
 
       final lat = _position!.latitude;
       final lng = _position!.longitude;
@@ -309,10 +290,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => StallDashboardPage(
-            stallId: widget.stallId,
-            stallName: widget.stallName,
-          ),
+          builder: (_) => StallDashboardPage(stallId: widget.stallId, stallName: widget.stallName),
         ),
       );
     } on ApiClientException catch (e, st) {
@@ -337,14 +315,10 @@ class _OpenStallPageState extends State<OpenStallPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.stallName.isEmpty ? 'Abrir puesto' : 'Abrir • ${widget.stallName}',
-        ),
+        title: Text(widget.stallName.isEmpty ? 'Abrir puesto' : 'Abrir • ${widget.stallName}'),
         actions: [
           IconButton(
-            onPressed: (_opening || _uploadingStall || _uploadingProducts)
-                ? null
-                : _ensureLocation,
+            onPressed: (_opening || _uploadingStall || _uploadingProducts) ? null : _ensureLocation,
             icon: const Icon(Icons.my_location),
             tooltip: 'Actualizar ubicación',
           ),
@@ -355,26 +329,19 @@ class _OpenStallPageState extends State<OpenStallPage> {
         children: [
           Text(
             'Checklist para abrir',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: title,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: title),
           ),
           const SizedBox(height: 6),
           Text(
-            'Ubicación + 2 fotos + inventario. Al abrir, el sistema guardará la dirección usando Amazon Location.',
+            'Ubicación + 2 fotos + inventario. Al abrir, se guardará la dirección con Amazon Location.',
             style: TextStyle(color: sub),
           ),
           const SizedBox(height: 14),
-
           _StepCard(
             title: '1) Ubicación',
             ok: _hasLocation,
             busy: _gettingLocation,
-            okText: _position == null
-                ? ''
-                : 'Lista • ±${_position!.accuracy.toStringAsFixed(0)}m',
+            okText: _position == null ? '' : 'Lista • ±${_position!.accuracy.toStringAsFixed(0)}m',
             badText: 'Falta (activa GPS)',
             trailing: IconButton(
               onPressed: _gettingLocation ? null : _ensureLocation,
@@ -391,9 +358,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           _PhotoStepCard(
             title: '2) Foto del puesto / entorno',
             file: _stallPhotoFile,
@@ -401,20 +366,15 @@ class _OpenStallPageState extends State<OpenStallPage> {
             busy: _uploadingStall,
             onTake: (_opening || _uploadingStall) ? null : _captureStallPhoto,
           ),
-
           const SizedBox(height: 10),
-
           _PhotoStepCard(
             title: '3) Foto de productos (mesa)',
             file: _productsPhotoFile,
             ok: _hasProductsPhoto,
             busy: _uploadingProducts,
-            onTake:
-            (_opening || _uploadingProducts) ? null : _captureProductsPhoto,
+            onTake: (_opening || _uploadingProducts) ? null : _captureProductsPhoto,
           ),
-
           const SizedBox(height: 16),
-
           _StepCard(
             title: '4) Inventario (voz o texto)',
             ok: _inventoryController.text.trim().isNotEmpty,
@@ -422,8 +382,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
             okText: 'Listo',
             badText: 'Escribe o dicta tu inventario',
             trailing: IconButton.filledTonal(
-              onPressed:
-              (_opening || _uploadingStall || _uploadingProducts) ? null : _toggleMic,
+              onPressed: (_opening || _uploadingStall || _uploadingProducts) ? null : _toggleMic,
               icon: Icon(_listening ? Icons.mic_off : Icons.mic),
               tooltip: _listening ? 'Detener' : 'Hablar',
             ),
@@ -435,34 +394,24 @@ class _OpenStallPageState extends State<OpenStallPage> {
                 maxLines: 6,
                 decoration: const InputDecoration(
                   labelText: 'Inventario',
-                  hintText: 'Ej: 2 poleras, 1 gorra, 3 medias...',
+                  hintText: 'Ej: 10 zapatos, 1 polera y 1 botella',
                 ),
                 onChanged: (_) => setState(() {}),
               ),
             ),
           ),
-
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
               _error!,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w600),
             ),
           ],
-
           const SizedBox(height: 18),
-
           FilledButton.icon(
             onPressed: _canOpen ? _open : null,
             icon: _opening
-                ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.play_arrow),
             label: Text(_opening ? 'Abriendo…' : 'Abrir ahora'),
           ),
@@ -499,10 +448,7 @@ class _StepCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -510,11 +456,7 @@ class _StepCard extends StatelessWidget {
           Row(
             children: [
               if (busy)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
               else
                 Icon(ok ? Icons.check_circle : Icons.error_outline, size: 22),
               const SizedBox(width: 10),
@@ -524,17 +466,14 @@ class _StepCard extends StatelessWidget {
                   children: [
                     Text(title, style: t.titleSmall),
                     const SizedBox(height: 2),
-                    Text(
-                      ok ? okText : badText,
-                      style: t.bodySmall?.copyWith(color: sub),
-                    ),
+                    Text(ok ? okText : badText, style: t.bodySmall?.copyWith(color: sub)),
                   ],
                 ),
               ),
               trailing,
             ],
           ),
-          ?child,
+          if (child != null) child!,
         ],
       ),
     );
@@ -564,10 +503,7 @@ class _PhotoStepCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withOpacity(0.6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -578,9 +514,7 @@ class _PhotoStepCard extends StatelessWidget {
               width: 76,
               height: 76,
               color: Colors.black12,
-              child: file == null
-                  ? const Icon(Icons.photo_camera, size: 28)
-                  : Image.file(file!, fit: BoxFit.cover),
+              child: file == null ? const Icon(Icons.photo_camera, size: 28) : Image.file(file!, fit: BoxFit.cover),
             ),
           ),
           const SizedBox(width: 12),
@@ -591,11 +525,7 @@ class _PhotoStepCard extends StatelessWidget {
                 Text(title, style: t.titleSmall),
                 const SizedBox(height: 4),
                 Text(
-                  busy
-                      ? 'Subiendo…'
-                      : ok
-                      ? 'Subida ✅'
-                      : 'Pendiente',
+                  busy ? 'Subiendo…' : (ok ? 'Subida ✅' : 'Pendiente'),
                   style: t.bodySmall?.copyWith(color: sub),
                 ),
                 const SizedBox(height: 10),
@@ -612,11 +542,7 @@ class _PhotoStepCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           if (busy)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
           else
             Icon(ok ? Icons.check_circle : Icons.radio_button_unchecked),
         ],

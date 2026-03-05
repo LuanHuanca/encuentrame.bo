@@ -1,4 +1,5 @@
-/* eslint-disable */
+'use strict';
+
 const crypto = require('crypto');
 const { ok, bad } = require('../util/http');
 
@@ -37,9 +38,21 @@ const rek = new RekognitionClient({ region: REGION });
 const bedrock = new BedrockRuntimeClient({ region: REGION });
 const location = new LocationClient({ region: REGION });
 
-function jsonBody(event) { try { return event.body ? JSON.parse(event.body) : {}; } catch { return {}; } }
-function nowIso() { return new Date().toISOString(); }
-function uuid() { return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'); }
+function jsonBody(event) {
+  try {
+    return event.body ? JSON.parse(event.body) : {};
+  } catch {
+    return {};
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function uuid() {
+  return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+}
 
 function callerId(caller) {
   return (
@@ -80,9 +93,9 @@ function candidateKeys(k) {
   const push = (x) => { if (x && !out.includes(x)) out.push(x); };
 
   push(key);
-  if (!key.startsWith('public/')) push(`public/${key}`);
-  if (key.startsWith('public/')) push(`public/public/${key.slice('public/'.length)}`);
-  if (key.startsWith('public/public/')) push(key.replace('public/public/', 'public/'));
+  if (key && !key.startsWith('public/')) push(`public/${key}`);
+  if (key && key.startsWith('public/')) push(`public/public/${key.slice('public/'.length)}`);
+  if (key && key.startsWith('public/public/')) push(key.replace('public/public/', 'public/'));
 
   return out.slice(0, 4);
 }
@@ -103,8 +116,8 @@ async function detectProductsLabelsWithKey(productsPhotoKey) {
     try {
       const out = await rek.send(new DetectLabelsCommand({
         Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
-        MaxLabels: 25,
-        MinConfidence: 70
+        MaxLabels: 20,
+        MinConfidence: 80
       }));
 
       const labels = (out.Labels || []).map(l => ({
@@ -131,7 +144,7 @@ async function detectModerationWithKey(stallPhotoKey) {
     try {
       const out = await rek.send(new DetectModerationLabelsCommand({
         Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
-        MinConfidence: 70
+        MinConfidence: 75
       }));
 
       const moderation = (out.ModerationLabels || []).map(l => ({
@@ -172,7 +185,7 @@ async function reverseGeocode(lat, lng) {
       subRegion: place.SubRegion || null,
       region: place.Region || null,
       country: place.Country || null,
-      postalCode: place.PostalCode || null,
+      postalCode: place.PostalCode || null
     };
 
     return { label: place.Label || null, address };
@@ -182,29 +195,12 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-/* Inventario (igual que ya tenías) */
-
-function fallbackInventoryParse(raw) {
-  const parts = raw.split(',').map(x => x.trim()).filter(Boolean);
-  const items = [];
-  for (const p of parts) {
-    const m = p.match(/^(\d+)\s+(.*)$/);
-    if (m) items.push({ canonical: m[2].trim(), display: m[2].trim(), qty: Number(m[1]), unit: 'unidad', category: null, tags: [], suggested: false });
-    else items.push({ canonical: p, display: p, qty: 1, unit: 'unidad', category: null, tags: [], suggested: false });
-  }
-  return { items };
-}
-
-function extractJson(text) {
-  if (!text) return null;
-  const s = text.indexOf('{');
-  const e = text.lastIndexOf('}');
-  if (s !== -1 && e !== -1 && e > s) return text.substring(s, e + 1);
-  return null;
-}
-
 const VISION_STOP_LABELS = new Set([
   'Person','Human','Face','Man','Woman','Kid','Child','People','Adult','Smile','Head','Hand','Finger'
+]);
+
+const VISION_GENERIC = new Set([
+  'Product','Products','Object','Indoors','Room','Floor','Table','Furniture','Clothing'
 ]);
 
 const CANON_MAP = [
@@ -216,20 +212,14 @@ const CANON_MAP = [
   ['lentes', 'gafas de sol'],
   ['lentes de sol', 'gafas de sol'],
   ['gafas', 'gafas de sol'],
-];
-
-const LABEL_SYNONYMS = [
-  { label: 'Bottle', words: ['botella','tomatodo','termo','vaso','shaker'] },
-  { label: 'Clothing', words: ['ropa','polera','camiseta','pantalón','pantalones'] },
-  { label: 'Sunglasses', words: ['gafas de sol','lentes de sol'] },
-  { label: 'Plate', words: ['plato','platos'] },
-  { label: 'Deodorant', words: ['desodorante'] },
+  ['zapatos', 'zapato'],
+  ['botas', 'bota']
 ];
 
 function normalizeCanonical(s) {
   const x = (s || '').toLowerCase().trim();
   if (!x) return '';
-  for (const [a,b] of CANON_MAP) {
+  for (const [a, b] of CANON_MAP) {
     if (x === a) return b;
   }
   return x;
@@ -240,49 +230,96 @@ function isNonProduct(canonical) {
   return ['hombre','mujer','persona','personas','gente','niño','niña','adulto','adultos'].includes(x);
 }
 
-function labelMatchesItem(canonical, labels) {
-  const name = canonical.toLowerCase();
-  const matched = [];
-
-  const labelsFiltered = (labels || []).filter(l => l?.name && !VISION_STOP_LABELS.has(l.name));
-
-  for (const l of labelsFiltered) {
-    const ln = (l.name || '').toLowerCase();
-    if (!ln) continue;
-    if (name.includes(ln) || ln.includes(name)) matched.push(l.name);
-  }
-
-  for (const map of LABEL_SYNONYMS) {
-    if (map.words.some(w => name.includes(w))) matched.push(map.label);
-  }
-
-  return [...new Set(matched)];
+function spanishWordToNumber(word) {
+  const w = (word || '').toLowerCase().trim();
+  const map = {
+    'un': 1, 'una': 1, 'uno': 1,
+    'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+    'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9,
+    'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15,
+    'dieciseis': 16, 'dieciséis': 16, 'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20
+  };
+  return map[w] ?? null;
 }
 
-function reconcileInventory(itemsFromText, labels) {
+function parseLooseInventory(raw) {
+  const text = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+y\s+/gi, ', ')
+    .replace(/\s+e\s+/gi, ', ')
+    .trim();
+
+  if (!text) return [];
+
+  const parts = text.split(',').map(x => x.trim()).filter(Boolean);
+  const items = [];
+
+  for (const p of parts) {
+    const m1 = p.match(/^(\d+)\s+(.*)$/);
+    if (m1) {
+      items.push({ canonical: m1[2].trim(), display: m1[2].trim(), qty: Number(m1[1]) });
+      continue;
+    }
+
+    const m2 = p.match(/^([a-záéíóúñ]+)\s+(.*)$/i);
+    if (m2) {
+      const n = spanishWordToNumber(m2[1]);
+      if (n != null) {
+        const name = m2[2].trim();
+        if (name) items.push({ canonical: name, display: name, qty: n });
+        continue;
+      }
+    }
+
+    items.push({ canonical: p, display: p, qty: 1 });
+  }
+
+  return items;
+}
+
+function fallbackInventoryParse(raw) {
+  const items = parseLooseInventory(raw).map(it => ({
+    canonical: it.canonical,
+    display: it.display,
+    qty: it.qty,
+    unit: 'unidad',
+    category: null,
+    tags: [],
+    suggested: false
+  }));
+  return { items };
+}
+
+function extractJson(text) {
+  if (!text) return null;
+  const s = text.indexOf('{');
+  const e = text.lastIndexOf('}');
+  if (s !== -1 && e !== -1 && e > s) return text.substring(s, e + 1);
+  return null;
+}
+
+function sanitizeInventoryItems(items) {
   const out = [];
   const seen = new Map();
 
-  for (const it of (itemsFromText || [])) {
-    const canonical = normalizeCanonical(it.canonical || it.name || '');
+  for (const it of (items || [])) {
+    const canonical = normalizeCanonical(it?.canonical || it?.name || it?.display || '');
     if (!canonical || isNonProduct(canonical)) continue;
 
-    const qty = Math.max(1, Number(it.qty || 1));
-    const matched = labelMatchesItem(canonical, labels);
+    let qty = Number(it?.qty ?? 1);
+    if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+    qty = Math.round(qty);
 
-    const confBase = (it.suggested === true) ? 0.60 : 0.78;
-    const conf = Math.min(0.95, confBase + (matched.length ? 0.14 : 0));
+    const display = String(it?.display || canonical).trim() || canonical;
 
     const obj = {
       canonical,
-      display: it.display || canonical,
+      display,
       qty,
-      unit: it.unit ?? 'unidad',
-      category: it.category ?? (matched[0] ?? null),
-      tags: it.tags ?? [],
-      evidence: { text: true, vision: matched },
-      confidence: Number(conf.toFixed(2)),
-      suggested: false
+      unit: it?.unit ?? 'unidad',
+      category: it?.category ?? null,
+      tags: Array.isArray(it?.tags) ? it.tags : [],
+      suggested: !!it?.suggested
     };
 
     if (!seen.has(canonical)) {
@@ -290,72 +327,49 @@ function reconcileInventory(itemsFromText, labels) {
       out.push(obj);
     } else {
       const idx = seen.get(canonical);
-      out[idx].qty += qty;
-      out[idx].confidence = Math.max(out[idx].confidence, obj.confidence);
-      out[idx].evidence.vision = [...new Set([...out[idx].evidence.vision, ...matched])];
+      out[idx].qty += obj.qty;
     }
   }
 
-  const visionOnly = [];
-  const alreadyVision = new Set(out.flatMap(x => x.evidence.vision || []));
-  for (const l of (labels || [])) {
-    if (!l?.name) continue;
-    if (VISION_STOP_LABELS.has(l.name)) continue;
-    if (alreadyVision.has(l.name)) continue;
-
-    const ln = l.name.toLowerCase();
-    if (['clothing','food','product','object','indoor','room'].includes(ln)) continue;
-
-    visionOnly.push({
-      canonical: normalizeCanonical(l.name),
-      display: l.name,
-      qty: 1,
-      unit: 'unidad',
-      category: l.name,
-      tags: [],
-      evidence: { text: false, vision: [l.name] },
-      confidence: 0.65,
-      suggested: true
-    });
-  }
-
-  return { items: out, visionOnly };
+  return out;
 }
 
 async function bedrockInventory(rawText, labels) {
   if (!BEDROCK_MODEL_ID) return null;
 
   const prompt =
-`Eres un extractor de inventario para un puesto de venta en Bolivia.
-Entrada: texto hablado (español) + labels de Rekognition (evidencia visual).
-Objetivo: devolver un inventario estructurado y fácil de entender.
+`Eres un extractor de inventario. La app convertirá tu respuesta en una tabla (Producto + Cantidad).
 
-REGLAS:
-- Devuelve SOLO JSON válido, sin explicación.
-- Si el texto dice cantidades (ej "10 poleras"), respétalas aunque no se vean en la foto.
-- Normaliza nombres: "tomatodo" -> "botella", "polera/camiseta" -> "polera", "gafas de sol/lentes" -> "gafas de sol".
-- No inventes productos. Si aparece solo en labels, NO lo metas como item confirmado.
-- Si en el texto aparece "hombre/persona", NO lo trates como producto.
+TAREA:
+- Lee el texto en español y conviértelo en ITEMS separados.
+- Si el texto dice "10 zapatos, una polera y una botella", deben salir 3 filas:
+  - zapato qty 10
+  - polera qty 1
+  - botella qty 1
 
-FORMATO:
+REGLAS CRÍTICAS:
+- Devuelve SOLO JSON válido. Sin texto extra. Sin markdown. Sin explicación.
+- Devuelve items SOLO desde el texto. NO inventes items por Rekognition.
+- Si no hay cantidad, asume 1.
+- Normaliza nombres (obligatorio):
+  - "tomatodo" o "termo" -> "botella"
+  - "camiseta" o "poleras" -> "polera"
+  - "botas" -> "bota"
+  - "zapatos" -> "zapato"
+- Fusiona duplicados (si se repiten, suma cantidades).
+- Ignora "persona/hombre/mujer/niño" como producto.
+
+FORMATO ESTRICTO:
 {
-  "items":[
-    {
-      "canonical": string,
-      "display": string,
-      "qty": number,
-      "unit": "unidad"|"par"|"paquete"|null,
-      "category": string|null,
-      "tags": string[],
-      "suggested": boolean
-    }
+  "items": [
+    { "canonical": "string", "display": "string", "qty": number }
   ]
 }
 
 Texto:
 """${rawText}"""
 
-Labels (Rekognition):
+Labels (solo referencia, NO para crear items):
 ${JSON.stringify(labels || [])}
 `;
 
@@ -392,11 +406,84 @@ ${JSON.stringify(labels || [])}
 
   try {
     const obj = JSON.parse(jsonStr);
-    if (obj && Array.isArray(obj.items)) return obj;
+    if (obj && Array.isArray(obj.items)) {
+      obj.items = sanitizeInventoryItems(obj.items);
+      return obj;
+    }
     return null;
   } catch {
     return null;
   }
+}
+
+function labelMatchesItem(canonical, labels) {
+  const name = canonical.toLowerCase();
+  const filtered = (labels || [])
+    .filter(l => l?.name && !VISION_STOP_LABELS.has(l.name) && !VISION_GENERIC.has(l.name))
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  const matched = [];
+
+  for (const l of filtered) {
+    const ln = String(l.name || '').toLowerCase();
+    if (!ln) continue;
+    if (name.includes(ln) || ln.includes(name)) matched.push(l.name);
+    if (matched.length >= 2) break;
+  }
+
+  return [...new Set(matched)];
+}
+
+function reconcileInventory(itemsFromText, labels) {
+  const items = [];
+  const seen = new Map();
+
+  const cleanTextItems = sanitizeInventoryItems(itemsFromText || []);
+  const cleanLabels = (labels || [])
+    .filter(l => l?.name && !VISION_STOP_LABELS.has(l.name) && !VISION_GENERIC.has(l.name))
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  for (const it of cleanTextItems) {
+    const matched = labelMatchesItem(it.canonical, cleanLabels);
+
+    const obj = {
+      canonical: it.canonical,
+      display: it.display,
+      qty: it.qty,
+      unit: it.unit ?? 'unidad',
+      category: it.category ?? (matched[0] ?? null),
+      tags: it.tags ?? [],
+      evidence: { text: true, vision: matched.slice(0, 2) },
+      confidence: matched.length ? 0.92 : 0.82,
+      suggested: false
+    };
+
+    if (!seen.has(obj.canonical)) {
+      seen.set(obj.canonical, items.length);
+      items.push(obj);
+    } else {
+      const idx = seen.get(obj.canonical);
+      items[idx].qty += obj.qty;
+    }
+  }
+
+  const suggestions = [];
+  const used = new Set(items.flatMap(x => (x.evidence?.vision || [])).filter(Boolean));
+
+  for (const l of cleanLabels) {
+    if (!l?.name) continue;
+    if (used.has(l.name)) continue;
+    if ((l.confidence || 0) < 88) continue;
+
+    suggestions.push({
+      label: l.name,
+      confidence: Math.min(0.7, Math.max(0.55, (l.confidence || 0) / 100)),
+    });
+
+    if (suggestions.length >= 6) break;
+  }
+
+  return { items, suggestions };
 }
 
 async function upsertProductsFromInventory({ stallId, items, now }) {
@@ -407,8 +494,10 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
     String(s || '')
       .toLowerCase()
       .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9\-áéíóúñ]/g, '')
+      .replace(/[^a-z0-9\-]/g, '')
       .slice(0, 64);
 
   for (const it of items) {
@@ -444,8 +533,6 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
     }));
   }
 }
-
-/* CRUD stalls */
 
 async function list({ caller }) {
   const userId = callerId(caller);
@@ -628,8 +715,6 @@ async function remove({ stallId, caller }) {
   return ok({ ok: true });
 }
 
-/* Lifecycle */
-
 async function open({ event, caller }) {
   const userId = callerId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
@@ -645,8 +730,6 @@ async function open({ event, caller }) {
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
-
-  const stallName = String(body.stallName || 'Mi puesto').trim();
 
   const lat = Number(body.lat);
   const lng = Number(body.lng);
@@ -713,6 +796,8 @@ async function open({ event, caller }) {
     console.log('UPSERT_PRODUCTS_ERROR', awsDetails(e));
   }
 
+  const stallName = String(body.stallName || '').trim();
+
   await ddb.send(new UpdateCommand({
     TableName: STALLS_TABLE,
     Key: { pk: pkStall(stallId), sk: 'PROFILE' },
@@ -731,7 +816,7 @@ async function open({ event, caller }) {
     ExpressionAttributeNames: { '#name': 'name' },
     ExpressionAttributeValues: {
       ':u': userId,
-      ':n': stallName,
+      ':n': stallName || undefined,
       ':o': openSk,
       ':lat': lat,
       ':lng': lng,
@@ -760,7 +845,7 @@ async function open({ event, caller }) {
       moderationLabels: moderation,
       inventoryRaw: inventoryText,
       inventoryItems: reconciled.items,
-      inventoryVisionOnly: reconciled.visionOnly
+      inventorySuggestions: reconciled.suggestions
     }
   }));
 
@@ -768,18 +853,15 @@ async function open({ event, caller }) {
     stallId,
     openingKey: openSk,
     status: flagged ? 'REVIEW' : 'OPEN',
-    labels,
-    moderation,
     location: {
       lat,
       lng,
       accuracy,
-      addressLabel: geo?.label ?? null,
-      address: geo?.address ?? null
+      addressLabel: geo?.label ?? null
     },
     inventory: {
-      items: reconciled.items,
-      visionOnly: reconciled.visionOnly
+      items: reconciled.items.map(x => ({ display: x.display, qty: x.qty, canonical: x.canonical })),
+      suggestions: reconciled.suggestions
     }
   });
 }
