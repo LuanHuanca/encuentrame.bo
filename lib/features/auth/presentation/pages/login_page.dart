@@ -138,8 +138,9 @@ class _LoginPageState extends State<LoginPage> {
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty)
+                          if (v == null || v.trim().isEmpty) {
                             return 'Ingresa tu correo';
+                          }
                           if (!v.contains('@')) return 'Correo no válido';
                           return null;
                         },
@@ -164,8 +165,9 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty)
+                          if (v == null || v.isEmpty) {
                             return 'Ingresa tu contraseña';
+                          }
                           return null;
                         },
                       ),
