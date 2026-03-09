@@ -305,10 +305,88 @@
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-4a4c6f472f794b6a4b43-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-49474265716c72437831-build.zip",
           "bedrockModelId": "amazon.titan-text-lite-v1",
-          "productsTable": "products-dev",
           "locationPlaceIndexName": "placeIndex4cb8293e-dev",
+          "productsTable": "products-dev-dev",
+          "storagedynamo324f6f26Name": {
+            "Fn::GetAtt": [
+              "storagedynamo324f6f26",
+              "Outputs.Name"
+            ]
+          },
+          "storagedynamo324f6f26Arn": {
+            "Fn::GetAtt": [
+              "storagedynamo324f6f26",
+              "Outputs.Arn"
+            ]
+          },
+          "storagedynamo324f6f26StreamArn": {
+            "Fn::GetAtt": [
+              "storagedynamo324f6f26",
+              "Outputs.StreamArn"
+            ]
+          },
+          "storagedynamo800bfc2bName": {
+            "Fn::GetAtt": [
+              "storagedynamo800bfc2b",
+              "Outputs.Name"
+            ]
+          },
+          "storagedynamo800bfc2bArn": {
+            "Fn::GetAtt": [
+              "storagedynamo800bfc2b",
+              "Outputs.Arn"
+            ]
+          },
+          "storagedynamo800bfc2bStreamArn": {
+            "Fn::GetAtt": [
+              "storagedynamo800bfc2b",
+              "Outputs.StreamArn"
+            ]
+          },
+          "storagedynamo81bc09dcName": {
+            "Fn::GetAtt": [
+              "storagedynamo81bc09dc",
+              "Outputs.Name"
+            ]
+          },
+          "storagedynamo81bc09dcArn": {
+            "Fn::GetAtt": [
+              "storagedynamo81bc09dc",
+              "Outputs.Arn"
+            ]
+          },
+          "storagedynamo81bc09dcStreamArn": {
+            "Fn::GetAtt": [
+              "storagedynamo81bc09dc",
+              "Outputs.StreamArn"
+            ]
+          },
+          "storages39e8ab6e7BucketName": {
+            "Fn::GetAtt": [
+              "storages39e8ab6e7",
+              "Outputs.BucketName"
+            ]
+          },
+          "storagedynamof7a7b9aaName": {
+            "Fn::GetAtt": [
+              "storagedynamof7a7b9aa",
+              "Outputs.Name"
+            ]
+          },
+          "storagedynamof7a7b9aaArn": {
+            "Fn::GetAtt": [
+              "storagedynamof7a7b9aa",
+              "Outputs.Arn"
+            ]
+          },
+          "storagedynamof7a7b9aaStreamArn": {
+            "Fn::GetAtt": [
+              "storagedynamof7a7b9aa",
+              "Outputs.StreamArn"
+            ]
+          },
           "env": "dev"
         }
       }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../core/config/amplify_config.dart';
 import '../core/config/app_dependencies.dart';
-
 import 'router.dart';
 import 'splash/splash_screen.dart';
 import 'theme.dart';
@@ -29,7 +28,7 @@ class _AppWidgetState extends State<AppWidget> {
   }
 
   Future<void> _boot() async {
-    final splashMinDuration = const Duration(seconds: 2);
+    const splashMinDuration = Duration(seconds: 2);
     final stopwatch = Stopwatch()..start();
 
     await _loadTheme();
@@ -39,10 +38,12 @@ class _AppWidgetState extends State<AppWidget> {
     _initialRoute = signedIn ? AppRoutes.home : AppRoutes.login;
 
     stopwatch.stop();
-    final remaining =
+
+    final remainingMilliseconds =
         splashMinDuration.inMilliseconds - stopwatch.elapsedMilliseconds;
-    if (remaining > 0 && mounted) {
-      await Future.delayed(Duration(milliseconds: remaining));
+
+    if (remainingMilliseconds > 0 && mounted) {
+      await Future.delayed(Duration(milliseconds: remainingMilliseconds));
     }
 
     if (mounted) {
@@ -51,21 +52,26 @@ class _AppWidgetState extends State<AppWidget> {
   }
 
   Future<void> _loadTheme() async {
-    final mode = await ThemeModeStorage.load();
-    if (mounted) {
-      setState(() {
-        _themeMode = mode;
-        _themeLoaded = true;
-      });
-    }
+    final themeMode = await ThemeModeStorage.load();
+
+    if (!mounted) return;
+
+    setState(() {
+      _themeMode = themeMode;
+      _themeLoaded = true;
+    });
   }
 
   void _toggleTheme() {
-    final next = _themeMode == ThemeMode.dark
-        ? ThemeMode.light
-        : ThemeMode.dark;
-    setState(() => _themeMode = next);
-    ThemeModeStorage.save(next);
+    final nextThemeMode =
+    _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+
+    _setThemeMode(nextThemeMode);
+  }
+
+  void _setThemeMode(ThemeMode themeMode) {
+    setState(() => _themeMode = themeMode);
+    ThemeModeStorage.save(themeMode);
   }
 
   @override
@@ -83,7 +89,7 @@ class _AppWidgetState extends State<AppWidget> {
     return ThemeModeScope(
       themeMode: _themeMode,
       onToggleTheme: _toggleTheme,
-      onSetThemeMode: (ThemeMode value) {  },
+      onSetThemeMode: _setThemeMode,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Encuentrame.bo',

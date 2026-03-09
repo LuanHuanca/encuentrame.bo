@@ -1,34 +1,37 @@
-import 'package:flutter/material.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
+import 'package:flutter/material.dart';
 
-import '../theme.dart';
+import '../../features/market/presentation/pages/market_search_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/stalls/presentation/pages/my_stalls_page.dart';
-import '../../features/buyer/presentation/pages/buyer_explore_page.dart';
-import '../../features/buyer/presentation/pages/buyer_home_discover_page.dart';
+import '../theme.dart';
 
-/// Proporciona información global del shell (modo comprador/vendedor) a la UI.
+class MainShellMode {
+  MainShellMode._();
+
+  static const String buyer = 'BUYER';
+  static const String vendor = 'VENDOR';
+}
+
 class MainShellScope extends InheritedWidget {
   const MainShellScope({
     super.key,
-    required this.role,
+    required this.mode,
     required this.toggleMode,
-    required this.setRole,
+    required this.setMode,
     required this.setIndex,
     required super.child,
   });
 
-  /// Rol actual (por ejemplo: BUYER o VENDOR).
-  final String role;
-
-  /// Cambia entre modos (comprador / vendedor).
+  final String mode;
   final VoidCallback toggleMode;
+  final ValueChanged<String> setMode;
+  final ValueChanged<int> setIndex;
 
-  /// Fija el rol explícitamente (por ejemplo, cambiar directo a BUYER).
-  final void Function(String role) setRole;
+  String get role => mode;
 
-  /// Cambia el índice actual del bottom navigation.
-  final void Function(int index) setIndex;
+  void switchToBuyer() => setMode(MainShellMode.buyer);
+  void switchToVendor() => setMode(MainShellMode.vendor);
 
   static MainShellScope? of(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<MainShellScope>();
@@ -36,23 +39,20 @@ class MainShellScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(MainShellScope oldWidget) {
-    return role != oldWidget.role;
+    return mode != oldWidget.mode;
   }
 }
 
-class MainShellIndex {
-  MainShellIndex._();
-  static const int home = 0;
-  static const int stalls = 1;
-  static const int market = 2;
-  static const int profile = 3;
-}
-
 class MainShell extends StatefulWidget {
-  const MainShell({super.key, this.initialIndex = 0});
+  const MainShell({
+    super.key,
+    this.initialMode = MainShellMode.buyer,
+    this.initialIndex = 0,
+  });
+
+  final String initialMode;
   final int initialIndex;
 
-  /// Obtiene el [MainShellScope] más cercano en el árbol.
   static MainShellScope? of(BuildContext context) {
     return MainShellScope.of(context);
   }
@@ -62,43 +62,21 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  late String _mode;
   late int _currentIndex;
   late PageController _pageController;
   late List<Widget> _pages;
-  String _role = 'BUYER';
-
-  void _toggleMode() {
-    setState(() {
-      _role = _role == 'BUYER' ? 'VENDOR' : 'BUYER';
-    });
-  }
-
-  void _setRole(String nextRole) {
-    if (_role == nextRole) return;
-    setState(() {
-      _role = nextRole;
-      _currentIndex = 0;
-      _configurePages();
-      _pageController.dispose();
-      _pageController = PageController(initialPage: _currentIndex);
-    });
-  }
-
-  void _setIndex(int index) {
-    if (index == _currentIndex) return;
-    setState(() => _currentIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex.clamp(0, 2);
-    _configurePages();
+
+    _mode = widget.initialMode == MainShellMode.vendor
+        ? MainShellMode.vendor
+        : MainShellMode.buyer;
+
+    _pages = _buildPages(_mode);
+    _currentIndex = widget.initialIndex.clamp(0, _pages.length - 1);
     _pageController = PageController(initialPage: _currentIndex);
   }
 
@@ -108,22 +86,109 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  // _onTap ya no se usa; la navegación se hace vía _setIndex.
+  void _toggleMode() {
+    _setMode(
+      _mode == MainShellMode.buyer
+          ? MainShellMode.vendor
+          : MainShellMode.buyer,
+    );
+  }
+
+  void _setMode(String nextMode) {
+    if (nextMode != MainShellMode.buyer && nextMode != MainShellMode.vendor) {
+      return;
+    }
+
+    if (_mode == nextMode) return;
+
+    setState(() {
+      _mode = nextMode;
+      _pages = _buildPages(_mode);
+      _currentIndex = 0;
+
+      _pageController.dispose();
+      _pageController = PageController(initialPage: _currentIndex);
+    });
+  }
+
+  void _setIndex(int index) {
+    if (index == _currentIndex) return;
+
+    setState(() => _currentIndex = index);
+
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  List<Widget> _buildPages(String mode) {
+    if (mode == MainShellMode.vendor) {
+      return const [
+        _PageWithBottomPadding(child: MyStallsPage()),
+        _PageWithBottomPadding(child: ProfilePage()),
+      ];
+    }
+
+    return const [
+      _PageWithBottomPadding(child: MarketSearchPage()),
+      _PageWithBottomPadding(child: ProfilePage()),
+    ];
+  }
+
+  List<Widget> _buildBottomItems({
+    required Color activeIconColor,
+    required Color inactiveIconColor,
+  }) {
+    if (_mode == MainShellMode.vendor) {
+      return [
+        _NavIcon(
+          icon: Icons.storefront_outlined,
+          activeIcon: Icons.storefront_rounded,
+          isActive: _currentIndex == 0,
+          activeColor: activeIconColor,
+          inactiveColor: inactiveIconColor,
+        ),
+        _NavIcon(
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
+          isActive: _currentIndex == 1,
+          activeColor: activeIconColor,
+          inactiveColor: inactiveIconColor,
+        ),
+      ];
+    }
+
+    return [
+      _NavIcon(
+        icon: Icons.search_rounded,
+        activeIcon: Icons.search_rounded,
+        isActive: _currentIndex == 0,
+        activeColor: activeIconColor,
+        inactiveColor: inactiveIconColor,
+      ),
+      _NavIcon(
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+        isActive: _currentIndex == 1,
+        activeColor: activeIconColor,
+        inactiveColor: inactiveIconColor,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final barColor = isDark ? AppColors.blueSurface : Colors.white;
-    final buttonBgColor = AppColors.bluePrimary;
-    final iconColor = isDark
-        ? AppColors.textMutedDark
-        : AppColors.textMutedLight;
-    const activeIconColor = Colors.white;
+    final inactiveIconColor =
+    isDark ? AppColors.textMutedDark : AppColors.textMutedLight;
 
     return MainShellScope(
-      role: _role,
+      mode: _mode,
       toggleMode: _toggleMode,
-      setRole: _setRole,
+      setMode: _setMode,
       setIndex: _setIndex,
       child: Scaffold(
         extendBody: true,
@@ -137,96 +202,32 @@ class _MainShellState extends State<MainShell> {
           index: _currentIndex,
           height: 60,
           color: barColor,
-          buttonBackgroundColor: buttonBgColor,
+          buttonBackgroundColor: AppColors.bluePrimary,
           backgroundColor: Colors.transparent,
           animationCurve: Curves.easeInOutCubic,
-          animationDuration: const Duration(milliseconds: 350),
+          animationDuration: const Duration(milliseconds: 320),
           onTap: _setIndex,
           items: _buildBottomItems(
-            role: _role,
-            activeIconColor: activeIconColor,
-            iconColor: iconColor,
+            activeIconColor: Colors.white,
+            inactiveIconColor: inactiveIconColor,
           ),
         ),
       ),
     );
   }
-
-  void _configurePages() {
-    if (_role == 'VENDOR') {
-      // Vista vendedor: solo puestos y perfil.
-      _pages = const [
-        _PageWithBottomPadding(child: MyStallsPage()),
-        _PageWithBottomPadding(child: ProfilePage()),
-      ];
-    } else {
-      // Vista comprador: inicio (descubrir), explorar, perfil.
-      _pages = const [
-        _PageWithBottomPadding(child: BuyerHomeDiscoverPage()),
-        _PageWithBottomPadding(child: BuyerExplorePage()),
-        _PageWithBottomPadding(child: ProfilePage()),
-      ];
-    }
-  }
-
-  List<Widget> _buildBottomItems({
-    required String role,
-    required Color activeIconColor,
-    required Color iconColor,
-  }) {
-    if (role == 'VENDOR') {
-      return [
-        _NavIcon(
-          icon: Icons.storefront_outlined,
-          activeIcon: Icons.storefront_rounded,
-          isActive: _currentIndex == 0,
-          activeColor: activeIconColor,
-          inactiveColor: iconColor,
-        ),
-        _NavIcon(
-          icon: Icons.person_outline_rounded,
-          activeIcon: Icons.person_rounded,
-          isActive: _currentIndex == 1,
-          activeColor: activeIconColor,
-          inactiveColor: iconColor,
-        ),
-      ];
-    }
-
-    // Vista comprador.
-    return [
-      _NavIcon(
-        icon: Icons.home_outlined,
-        activeIcon: Icons.home_rounded,
-        isActive: _currentIndex == 0,
-        activeColor: activeIconColor,
-        inactiveColor: iconColor,
-      ),
-      _NavIcon(
-        icon: Icons.explore_outlined,
-        activeIcon: Icons.explore_rounded,
-        isActive: _currentIndex == 1,
-        activeColor: activeIconColor,
-        inactiveColor: iconColor,
-      ),
-      _NavIcon(
-        icon: Icons.person_outline_rounded,
-        activeIcon: Icons.person_rounded,
-        isActive: _currentIndex == 2,
-        activeColor: activeIconColor,
-        inactiveColor: iconColor,
-      ),
-    ];
-  }
 }
 
 class _PageWithBottomPadding extends StatelessWidget {
   const _PageWithBottomPadding({required this.child});
+
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(padding: const EdgeInsets.only(bottom: 72), child: child);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 72),
+      child: child,
+    );
   }
 }
 
@@ -254,6 +255,3 @@ class _NavIcon extends StatelessWidget {
     );
   }
 }
-
-/// Página de la pestaña "Explorar / Más" que depende del rol actual.
-// Placeholder eliminado: ya no se usa en el nuevo diseño.

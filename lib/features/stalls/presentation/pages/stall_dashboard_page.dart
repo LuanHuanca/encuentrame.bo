@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
@@ -29,7 +30,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
 
   bool _loading = true;
   bool _productsLoading = true;
-  String? _error;
+  String? _errorMessage;
 
   Map<String, dynamic>? _stall;
   Map<String, dynamic>? _opening;
@@ -45,21 +46,28 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     _loadAll();
   }
 
-  String _fmtDate(String? iso) {
+  String _formatDate(String? iso) {
     if (iso == null || iso.isEmpty) return '';
+
     try {
-      final d = DateTime.parse(iso).toLocal();
-      String two(int x) => x.toString().padLeft(2, '0');
-      return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
+      final date = DateTime.parse(iso).toLocal();
+
+      String twoDigits(int value) => value.toString().padLeft(2, '0');
+
+      return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
+          '${twoDigits(date.hour)}:${twoDigits(date.minute)}';
     } catch (_) {
       return iso;
     }
   }
 
-  Future<String?> _getUrl(String key) async {
+  Future<String?> _getStorageUrl(String key) async {
     try {
-      final res = await Amplify.Storage.getUrl(path: StoragePath.fromString(key)).result;
-      return res.url.toString();
+      final response = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(key),
+      ).result;
+
+      return response.url.toString();
     } catch (_) {
       return null;
     }
@@ -68,205 +76,272 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
   Future<void> _loadAll() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _errorMessage = null;
     });
 
     try {
-      final data = await _api.get('/stalls/${widget.stallId}/current');
-      _stall = (data['stall'] as Map?)?.cast<String, dynamic>();
-      _opening = (data['opening'] as Map?)?.cast<String, dynamic>();
+      final response = await _api.get('/stalls/${widget.stallId}/current');
+
+      _stall = (response['stall'] as Map?)?.cast<String, dynamic>();
+      _opening = (response['opening'] as Map?)?.cast<String, dynamic>();
 
       final stallPhotoKey = _opening?['stallPhotoKey'] as String?;
       final productsPhotoKey = _opening?['productsPhotoKey'] as String?;
 
-      _stallPhotoUrl = stallPhotoKey == null ? null : await _getUrl(stallPhotoKey);
-      _productsPhotoUrl = productsPhotoKey == null ? null : await _getUrl(productsPhotoKey);
+      _stallPhotoUrl = stallPhotoKey == null
+          ? null
+          : await _getStorageUrl(stallPhotoKey);
+
+      _productsPhotoUrl = productsPhotoKey == null
+          ? null
+          : await _getStorageUrl(productsPhotoKey);
 
       await _loadProducts(showLoader: true);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      _error = UserFriendlyMessages.fromApiError(e);
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      _error = UserFriendlyMessages.fromGenericError(e);
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+      _errorMessage = UserFriendlyMessages.fromApiError(error);
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+      _errorMessage = UserFriendlyMessages.fromGenericError(error);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _loadProducts({required bool showLoader}) async {
-    if (showLoader && mounted) setState(() => _productsLoading = true);
+    if (showLoader && mounted) {
+      setState(() => _productsLoading = true);
+    }
 
     try {
-      final res = await _api.get('/stalls/${widget.stallId}/products');
-      final list = (res['products'] as List?)?.cast<dynamic>() ?? const [];
-      _products = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+      final response = await _api.get('/stalls/${widget.stallId}/products');
+      final rawList =
+          (response['products'] as List?)?.cast<dynamic>() ?? const [];
+
+      _products = rawList
+          .map((item) => (item as Map).cast<String, dynamic>())
+          .toList();
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _productsLoading = false);
+      if (mounted) {
+        setState(() => _productsLoading = false);
+      }
     }
   }
 
   Future<void> _closeStall() async {
-    final ok = await AppConfirmDialog.show(
+    final confirmed = await AppConfirmDialog.show(
       context,
       title: 'Cerrar puesto',
-      message: '¿Cerrar tu puesto ahora? Podrás volver a abrir cuando quieras.',
+      message: '¿Cerrar tu puesto ahora?',
       confirmLabel: 'Cerrar',
       cancelLabel: 'Cancelar',
     );
-    if (ok != true) return;
+
+    if (confirmed != true) return;
 
     setState(() => _loading = true);
+
     try {
       await _api.post('/stalls/${widget.stallId}/close', {});
+
       if (!mounted) return;
+
       AppSnackbar.success(context, 'Puesto cerrado.');
       Navigator.pop(context);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
-  Future<void> _editProduct(Map<String, dynamic> p) async {
-    final productId = (p['productId'] ?? '').toString();
+  Future<void> _editProduct(Map<String, dynamic> product) async {
+    final productId = (product['productId'] ?? '').toString();
+
     if (productId.isEmpty) return;
 
-    final nameCtrl = TextEditingController(text: (p['display'] ?? p['canonical'] ?? '').toString());
-    final qtyCtrl = TextEditingController(text: (p['lastQty'] ?? 1).toString());
-    bool active = p['active'] == true;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx2, setLocal) {
-          return AlertDialog(
-            title: const Text('Editar producto'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: qtyCtrl,
-                  decoration: const InputDecoration(labelText: 'Cantidad'),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  value: active,
-                  onChanged: (v) => setLocal(() => active = v),
-                  title: const Text('Activo'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx2, false), child: const Text('Cancelar')),
-              FilledButton(onPressed: () => Navigator.pop(ctx2, true), child: const Text('Guardar')),
-            ],
-          );
-        },
-      ),
+    final nameController = TextEditingController(
+      text: (product['display'] ?? product['canonical'] ?? '').toString(),
     );
 
-    if (ok != true) {
-      nameCtrl.dispose();
-      qtyCtrl.dispose();
+    final quantityController = TextEditingController(
+      text: (product['lastQty'] ?? 1).toString(),
+    );
+
+    bool isActive = product['active'] == true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setLocalState) {
+            return AlertDialog(
+              title: const Text('Editar producto'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre visible',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: quantityController,
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile(
+                    value: isActive,
+                    onChanged: (value) {
+                      setLocalState(() => isActive = value);
+                    },
+                    title: const Text('Producto activo'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      nameController.dispose();
+      quantityController.dispose();
       return;
     }
 
-    final display = nameCtrl.text.trim();
-    final qty = int.tryParse(qtyCtrl.text.trim());
+    final displayName = nameController.text.trim();
+    final lastQuantity = int.tryParse(quantityController.text.trim());
 
-    nameCtrl.dispose();
-    qtyCtrl.dispose();
+    nameController.dispose();
+    quantityController.dispose();
 
     final payload = <String, dynamic>{
-      'active': active,
+      'active': isActive,
     };
 
-    if (display.isNotEmpty) payload['display'] = display;
-    if (qty != null) payload['lastQty'] = qty;
+    if (displayName.isNotEmpty) {
+      payload['display'] = displayName;
+    }
+
+    if (lastQuantity != null) {
+      payload['lastQty'] = lastQuantity;
+    }
 
     setState(() => _productsLoading = true);
+
     try {
-      await _api.put('/stalls/${widget.stallId}/products/$productId', payload);
+      await _api.put(
+        '/stalls/${widget.stallId}/products/$productId',
+        payload,
+      );
+
       if (!mounted) return;
+
       AppSnackbar.success(context, 'Producto actualizado.');
       await _loadProducts(showLoader: false);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _productsLoading = false);
-    }
-  }
-
-  Future<void> _deleteProduct(Map<String, dynamic> p) async {
-    final productId = (p['productId'] ?? '').toString();
-    final name = (p['display'] ?? p['canonical'] ?? 'Producto').toString();
-    if (productId.isEmpty) return;
-
-    final ok = await AppConfirmDialog.show(
-      context,
-      title: 'Eliminar producto',
-      message: '¿Eliminar "$name" de tu lista?',
-      confirmLabel: 'Eliminar',
-      cancelLabel: 'Cancelar',
-      isDestructive: true,
-    );
-    if (ok != true) return;
-
-    setState(() => _productsLoading = true);
-    try {
-      await _api.del('/stalls/${widget.stallId}/products/$productId');
-      if (!mounted) return;
-      AppSnackbar.success(context, 'Producto eliminado.');
-      await _loadProducts(showLoader: false);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-    } finally {
-      if (mounted) setState(() => _productsLoading = false);
+      if (mounted) {
+        setState(() => _productsLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
+    final shell = MainShell.of(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    if (_error != null) {
+    if (_errorMessage != null) {
       return Scaffold(
         appBar: AppBar(
           title: Text(widget.stallName.isEmpty ? 'Mi puesto' : widget.stallName),
-          actions: [IconButton(onPressed: _loadAll, icon: const Icon(Icons.refresh))],
+          actions: [
+            IconButton(
+              onPressed: _loadAll,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
         body: Center(
           child: Padding(
@@ -274,11 +349,26 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.error,
+                ),
                 const SizedBox(height: 16),
-                Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 16)),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: subtitleColor,
+                    fontSize: 16,
+                  ),
+                ),
                 const SizedBox(height: 16),
-                FilledButton.icon(onPressed: _loadAll, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
+                FilledButton.icon(
+                  onPressed: _loadAll,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                ),
               ],
             ),
           ),
@@ -287,36 +377,54 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     }
 
     final opening = _opening;
+
     if (opening == null) {
       return Scaffold(
         appBar: AppBar(
           title: Text(widget.stallName.isEmpty ? 'Mi puesto' : widget.stallName),
-          actions: [IconButton(onPressed: _loadAll, icon: const Icon(Icons.refresh))],
         ),
         body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Este puesto no está abierto en este momento.', style: TextStyle(color: sub)),
+          child: Text(
+            'Este puesto no está abierto en este momento.',
+            style: TextStyle(color: subtitleColor),
           ),
         ),
       );
     }
 
-    final addressLabel = (opening['addressLabel'] ?? _stall?['currentAddressLabel'] ?? '').toString().trim();
-    final status = (opening['status'] ?? 'OPEN').toString();
-    final openedAt = _fmtDate(opening['openedAt']?.toString());
+    final addressLabel =
+    (opening['addressLabel'] ?? _stall?['currentAddressLabel'] ?? '')
+        .toString()
+        .trim();
 
-    final invItems = (opening['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
-    final suggestions = (opening['inventorySuggestions'] as List?)?.cast<dynamic>() ??
-        (opening['inventoryVisionOnly'] as List?)?.cast<dynamic>() ??
-        const [];
+    final status = (opening['status'] ?? 'OPEN').toString();
+    final openedAt = _formatDate(opening['openedAt']?.toString());
+
+    final inventoryItems =
+        (opening['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
+
+    final suggestions =
+        (opening['inventorySuggestions'] as List?)?.cast<dynamic>() ?? const [];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.stallName.isEmpty ? 'Mi puesto' : widget.stallName),
         actions: [
-          IconButton(onPressed: _loadAll, icon: const Icon(Icons.refresh), tooltip: 'Actualizar'),
-          IconButton(onPressed: _closeStall, icon: const Icon(Icons.stop_circle), tooltip: 'Cerrar puesto'),
+          IconButton(
+            onPressed: shell == null ? null : shell.switchToBuyer,
+            icon: const Icon(Icons.search_rounded),
+            tooltip: 'Cambiar a comprador',
+          ),
+          IconButton(
+            onPressed: _loadAll,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
+          ),
+          IconButton(
+            onPressed: _closeStall,
+            icon: const Icon(Icons.stop_circle_outlined),
+            tooltip: 'Cerrar puesto',
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -327,68 +435,122 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
           children: [
             Text(
               _stall?['name']?.toString() ?? widget.stallName,
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: title),
+              style: TextStyle(
+                color: titleColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 6),
-            Text('Estado: $status • $openedAt', style: TextStyle(color: sub)),
+            Text(
+              'Estado: $status • abierto desde $openedAt',
+              style: TextStyle(color: subtitleColor),
+            ),
             if (addressLabel.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _AddressCard(
                 label: addressLabel,
                 onCopy: () async {
-                  await Clipboard.setData(ClipboardData(text: addressLabel));
-                  if (context.mounted) AppSnackbar.success(context, 'Dirección copiada.');
+                  await Clipboard.setData(
+                    ClipboardData(text: addressLabel),
+                  );
+
+                  if (!context.mounted) return;
+
+                  AppSnackbar.success(context, 'Dirección copiada.');
                 },
               ),
             ],
             const SizedBox(height: 16),
-            _OsmLocationCard(opening: opening),
+            _LocationCard(opening: opening),
             const SizedBox(height: 16),
-            Text('Imágenes', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(
+              'Imágenes',
+              style: TextStyle(
+                color: titleColor,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 10),
-            _ImageCard(label: 'Puesto / entorno', url: _stallPhotoUrl),
+            _ImageCard(
+              label: 'Foto del puesto',
+              imageUrl: _stallPhotoUrl,
+            ),
             const SizedBox(height: 10),
-            _ImageCard(label: 'Productos (mesa)', url: _productsPhotoUrl),
+            _ImageCard(
+              label: 'Foto de productos',
+              imageUrl: _productsPhotoUrl,
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  child: Text('Productos', style: TextStyle(color: title, fontSize: 16, fontWeight: FontWeight.w800)),
+                  child: Text(
+                    'Productos detectados',
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 if (_productsLoading)
-                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 IconButton(
-                  onPressed: _productsLoading ? null : () => _loadProducts(showLoader: true),
+                  onPressed: _productsLoading
+                      ? null
+                      : () => _loadProducts(showLoader: true),
                   icon: const Icon(Icons.refresh),
-                  tooltip: 'Actualizar productos',
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            _ProductsTable(
+            _ProductsCard(
               products: _products,
-              subtitleColor: sub,
+              subtitleColor: subtitleColor,
               onEdit: _editProduct,
-              onDelete: _deleteProduct,
             ),
             const SizedBox(height: 16),
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
-              title: Text('Inventario extraído (voz/texto)', style: TextStyle(fontSize: 14, color: title)),
+              title: Text(
+                'Inventario extraído',
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 14,
+                ),
+              ),
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _InventoryList(items: invItems, emptyText: 'Sin items'),
+                  child: _InventoryList(
+                    items: inventoryItems,
+                    emptyText: 'Sin items detectados.',
+                  ),
                 ),
               ],
             ),
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
-              title: Text('Sugerencias por foto', style: TextStyle(fontSize: 14, color: title)),
+              title: Text(
+                'Sugerencias por foto',
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 14,
+                ),
+              ),
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _SuggestionsList(items: suggestions, emptyText: 'Sin sugerencias'),
+                  child: _SuggestionsList(
+                    items: suggestions,
+                    emptyText: 'Sin sugerencias.',
+                  ),
                 ),
               ],
             ),
@@ -399,18 +561,16 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
   }
 }
 
-class _ProductsTable extends StatelessWidget {
-  const _ProductsTable({
+class _ProductsCard extends StatelessWidget {
+  const _ProductsCard({
     required this.products,
     required this.subtitleColor,
     required this.onEdit,
-    required this.onDelete,
   });
 
   final List<Map<String, dynamic>> products;
   final Color subtitleColor;
   final void Function(Map<String, dynamic>) onEdit;
-  final void Function(Map<String, dynamic>) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +582,7 @@ class _ProductsTable extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
-          'Aún no hay productos. Abre el puesto con inventario para generarlos.',
+          'Todavía no hay productos. Abre el puesto con inventario para generarlos.',
           style: TextStyle(color: subtitleColor),
         ),
       );
@@ -435,48 +595,40 @@ class _ProductsTable extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                const Expanded(child: Text('Producto', style: TextStyle(fontWeight: FontWeight.w800))),
-                SizedBox(width: 70, child: Text('Cantidad', style: TextStyle(color: subtitleColor))),
-                const SizedBox(width: 64),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Divider(height: 1),
-          ...products.map((p) {
-            final display = (p['display'] ?? p['canonical'] ?? 'Producto').toString();
-            final qty = (p['lastQty'] ?? 0).toString();
-            final active = p['active'] == true;
+          ...products.map((product) {
+            final displayName =
+            (product['display'] ?? product['canonical'] ?? 'Producto')
+                .toString();
+
+            final lastQuantity = (product['lastQty'] ?? 0).toString();
+            final isActive = product['active'] == true;
 
             return Column(
               children: [
                 ListTile(
-                  dense: true,
-                  title: Text(display, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(active ? 'Activo' : 'Inactivo', style: TextStyle(color: subtitleColor)),
+                  title: Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    isActive ? 'Activo' : 'Inactivo',
+                    style: TextStyle(color: subtitleColor),
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(width: 56, child: Text('x$qty', textAlign: TextAlign.right)),
+                      Text('x$lastQuantity'),
+                      const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () => onEdit(p),
+                        onPressed: () => onEdit(product),
                         icon: const Icon(Icons.edit_outlined),
                         tooltip: 'Editar',
-                      ),
-                      IconButton(
-                        onPressed: () => onDelete(p),
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Eliminar',
                       ),
                     ],
                   ),
                 ),
-                const Divider(height: 1),
+                if (product != products.last) const Divider(height: 1),
               ],
             );
           }),
@@ -487,16 +639,24 @@ class _ProductsTable extends StatelessWidget {
 }
 
 class _InventoryList extends StatelessWidget {
-  const _InventoryList({required this.items, required this.emptyText});
+  const _InventoryList({
+    required this.items,
+    required this.emptyText,
+  });
 
   final List<dynamic> items;
   final String emptyText;
 
   @override
   Widget build(BuildContext context) {
-    final sub = AppThemeColors.subtitleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
-    if (items.isEmpty) return Text(emptyText, style: TextStyle(color: sub));
+    if (items.isEmpty) {
+      return Text(
+        emptyText,
+        style: TextStyle(color: subtitleColor),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -505,16 +665,18 @@ class _InventoryList extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
-        children: items.map((x) {
-          final m = (x as Map).cast<String, dynamic>();
-          final display = (m['display'] ?? m['canonical'] ?? 'Producto').toString();
-          final qty = (m['qty'] ?? 1).toString();
+        children: items.map((item) {
+          final value = (item as Map).cast<String, dynamic>();
+          final displayName =
+          (value['display'] ?? value['canonical'] ?? 'Producto').toString();
+          final quantity = (value['qty'] ?? 1).toString();
+
           return ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.check_circle_outline),
-            title: Text(display),
-            trailing: Text('x$qty'),
+            leading: const Icon(Icons.check_circle_outline_rounded),
+            title: Text(displayName),
+            trailing: Text('x$quantity'),
           );
         }).toList(),
       ),
@@ -523,16 +685,24 @@ class _InventoryList extends StatelessWidget {
 }
 
 class _SuggestionsList extends StatelessWidget {
-  const _SuggestionsList({required this.items, required this.emptyText});
+  const _SuggestionsList({
+    required this.items,
+    required this.emptyText,
+  });
 
   final List<dynamic> items;
   final String emptyText;
 
   @override
   Widget build(BuildContext context) {
-    final sub = AppThemeColors.subtitleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
-    if (items.isEmpty) return Text(emptyText, style: TextStyle(color: sub));
+    if (items.isEmpty) {
+      return Text(
+        emptyText,
+        style: TextStyle(color: subtitleColor),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -543,15 +713,21 @@ class _SuggestionsList extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: items.map((x) {
-          if (x is Map) {
-            final m = x.cast<String, dynamic>();
-            final label = (m['label'] ?? m['name'] ?? m['display'] ?? '').toString();
-            if (label.isEmpty) return const SizedBox.shrink();
+        children: items.map((item) {
+          if (item is Map) {
+            final value = item.cast<String, dynamic>();
+            final label =
+            (value['label'] ?? value['name'] ?? value['display'] ?? '')
+                .toString();
+
+            if (label.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
             return Chip(label: Text(label));
           }
-          final s = x.toString();
-          return Chip(label: Text(s));
+
+          return Chip(label: Text(item.toString()));
         }).toList(),
       ),
     );
@@ -559,15 +735,18 @@ class _SuggestionsList extends StatelessWidget {
 }
 
 class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.label, required this.onCopy});
+  const _AddressCard({
+    required this.label,
+    required this.onCopy,
+  });
 
   final String label;
   final VoidCallback onCopy;
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -583,36 +762,54 @@ class _AddressCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Dirección (Amazon Location)', style: TextStyle(color: title, fontWeight: FontWeight.w800)),
+                Text(
+                  'Dirección actual',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(label, style: TextStyle(color: sub)),
+                Text(
+                  label,
+                  style: TextStyle(color: subtitleColor),
+                ),
               ],
             ),
           ),
-          IconButton(onPressed: onCopy, icon: const Icon(Icons.copy_rounded), tooltip: 'Copiar'),
+          IconButton(
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy_rounded),
+            tooltip: 'Copiar',
+          ),
         ],
       ),
     );
   }
 }
 
-class _OsmLocationCard extends StatelessWidget {
-  const _OsmLocationCard({required this.opening});
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({required this.opening});
 
   final Map<String, dynamic> opening;
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
-    final lat = (opening['lat'] as num?)?.toDouble();
-    final lng = (opening['lng'] as num?)?.toDouble();
-    final acc = (opening['accuracy'] as num?)?.toDouble();
+    final latitude = (opening['lat'] as num?)?.toDouble();
+    final longitude = (opening['lng'] as num?)?.toDouble();
+    final accuracy = (opening['accuracy'] as num?)?.toDouble();
 
-    if (lat == null || lng == null) return Text('Sin ubicación', style: TextStyle(color: sub));
+    if (latitude == null || longitude == null) {
+      return Text(
+        'Sin ubicación registrada.',
+        style: TextStyle(color: subtitleColor),
+      );
+    }
 
-    final center = LatLng(lat, lng);
+    final point = LatLng(latitude, longitude);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -623,11 +820,19 @@ class _OsmLocationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Ubicación', style: TextStyle(color: title, fontWeight: FontWeight.w800)),
+          Text(
+            'Ubicación',
+            style: TextStyle(
+              color: titleColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 6),
           Text(
-            'lat ${lat.toStringAsFixed(6)} • lng ${lng.toStringAsFixed(6)} • ±${(acc ?? 0).toStringAsFixed(0)}m',
-            style: TextStyle(color: sub),
+            'lat ${latitude.toStringAsFixed(6)} • '
+                'lng ${longitude.toStringAsFixed(6)} • '
+                '±${(accuracy ?? 0).toStringAsFixed(0)} m',
+            style: TextStyle(color: subtitleColor),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -635,19 +840,26 @@ class _OsmLocationCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: FlutterMap(
-                options: MapOptions(initialCenter: center, initialZoom: 16),
+                options: MapOptions(
+                  initialCenter: point,
+                  initialZoom: 16,
+                ),
                 children: [
                   TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'encuentrame.bo',
                   ),
                   MarkerLayer(
                     markers: [
                       Marker(
-                        point: center,
+                        point: point,
                         width: 40,
                         height: 40,
-                        child: const Icon(Icons.location_pin, size: 40),
+                        child: const Icon(
+                          Icons.location_pin,
+                          size: 40,
+                        ),
                       ),
                     ],
                   ),
@@ -662,15 +874,18 @@ class _OsmLocationCard extends StatelessWidget {
 }
 
 class _ImageCard extends StatelessWidget {
-  const _ImageCard({required this.label, required this.url});
+  const _ImageCard({
+    required this.label,
+    required this.imageUrl,
+  });
 
   final String label;
-  final String? url;
+  final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -681,14 +896,28 @@ class _ImageCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: title, fontWeight: FontWeight.w800)),
+          Text(
+            label,
+            style: TextStyle(
+              color: titleColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 10),
-          if (url == null)
-            Text('No disponible', style: TextStyle(color: sub))
+          if (imageUrl == null)
+            Text(
+              'No disponible.',
+              style: TextStyle(color: subtitleColor),
+            )
           else
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(url!, height: 180, width: double.infinity, fit: BoxFit.cover),
+              child: Image.network(
+                imageUrl!,
+                width: double.infinity,
+                height: 180,
+                fit: BoxFit.cover,
+              ),
             ),
         ],
       ),

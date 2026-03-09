@@ -1,31 +1,19 @@
-/* eslint-disable */
+'use strict';
+
 const stalls = require('./routes/stalls');
 const users = require('./routes/users');
 const products = require('./routes/products');
+const market = require('./routes/market');
 const { ok, bad, options } = require('./util/http');
+const { getCaller } = require('./util/auth');
 
-function pathParts(p) {
-  return (p || '').split('?')[0].split('/').filter(Boolean);
+function pathParts(path) {
+  return (path || '').split('?')[0].split('/').filter(Boolean);
 }
 
 function stripApiPrefix(parts) {
-  const i = parts.indexOf('api');
-  return i >= 0 ? parts.slice(i + 1) : parts;
-}
-
-function getCaller(event) {
-  const claims =
-    event.requestContext?.authorizer?.claims ||
-    event.requestContext?.authorizer?.jwt?.claims ||
-    null;
-
-  const identity = event.requestContext?.identity || null;
-
-  if (claims) return { ...claims, _identity: identity };
-  if (event.requestContext?.authorizer) return { ...event.requestContext.authorizer, _identity: identity };
-  if (identity) return identity;
-
-  return null;
+  const apiIndex = parts.indexOf('api');
+  return apiIndex >= 0 ? parts.slice(apiIndex + 1) : parts;
 }
 
 async function route(event) {
@@ -36,7 +24,9 @@ async function route(event) {
   const parts = stripApiPrefix(pathParts(event.path));
 
   if (parts[0] === 'health' && parts.length === 1) {
-    if (method === 'GET') return ok({ ok: true, env: process.env.ENV || 'dev' });
+    if (method === 'GET') {
+      return ok({ ok: true, env: process.env.ENV || 'dev' });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
@@ -44,6 +34,45 @@ async function route(event) {
   if (parts[0] === 'users' && parts[1] === 'me' && parts.length === 2) {
     if (method === 'GET') return users.me({ caller, event });
     if (method === 'PUT') return users.updateMe({ caller, event });
+    return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
+  }
+
+  // /market/open-stalls
+  if (
+    parts[0] === 'market' &&
+    parts[1] === 'open-stalls' &&
+    parts.length === 2
+  ) {
+    if (method === 'GET') return market.listOpenStallsNear({ event, caller });
+    return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
+  }
+
+  // /market/products/search
+  if (
+    parts[0] === 'market' &&
+    parts[1] === 'products' &&
+    parts[2] === 'search' &&
+    parts.length === 3
+  ) {
+    if (method === 'GET') return market.searchProductsNear({ event, caller });
+    return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
+  }
+
+  // /market/stalls/{stallId}/products
+  if (
+    parts[0] === 'market' &&
+    parts[1] === 'stalls' &&
+    parts[2] &&
+    parts[3] === 'products' &&
+    parts.length === 4
+  ) {
+    if (method === 'GET') {
+      return market.listStallProductsPublic({
+        stallId: parts[2],
+        event,
+        caller,
+      });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
@@ -67,14 +96,34 @@ async function route(event) {
   }
 
   // /stalls/{stallId}/products
-  if (parts[0] === 'stalls' && parts[1] && parts[2] === 'products' && parts.length === 3) {
-    if (method === 'GET') return products.list({ stallId: parts[1], caller, event });
+  if (
+    parts[0] === 'stalls' &&
+    parts[1] &&
+    parts[2] === 'products' &&
+    parts.length === 3
+  ) {
+    if (method === 'GET') {
+      return products.list({ stallId: parts[1], caller, event });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
   // /stalls/{stallId}/products/{productId}
-  if (parts[0] === 'stalls' && parts[1] && parts[2] === 'products' && parts[3] && parts.length === 4) {
-    if (method === 'PUT') return products.update({ stallId: parts[1], productId: parts[3], caller, event });
+  if (
+    parts[0] === 'stalls' &&
+    parts[1] &&
+    parts[2] === 'products' &&
+    parts[3] &&
+    parts.length === 4
+  ) {
+    if (method === 'PUT') {
+      return products.update({
+        stallId: parts[1],
+        productId: parts[3],
+        caller,
+        event,
+      });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
@@ -88,20 +137,41 @@ async function route(event) {
   }
 
   // /stalls/{stallId}/current
-  if (parts[0] === 'stalls' && parts[1] && parts[2] === 'current' && parts.length === 3) {
-    if (method === 'GET') return stalls.getCurrent({ stallId: parts[1], caller, event });
+  if (
+    parts[0] === 'stalls' &&
+    parts[1] &&
+    parts[2] === 'current' &&
+    parts.length === 3
+  ) {
+    if (method === 'GET') {
+      return stalls.getCurrent({ stallId: parts[1], caller, event });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
   // /stalls/{stallId}/close
-  if (parts[0] === 'stalls' && parts[1] && parts[2] === 'close' && parts.length === 3) {
-    if (method === 'POST') return stalls.close({ stallId: parts[1], caller, event });
+  if (
+    parts[0] === 'stalls' &&
+    parts[1] &&
+    parts[2] === 'close' &&
+    parts.length === 3
+  ) {
+    if (method === 'POST') {
+      return stalls.close({ stallId: parts[1], caller, event });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
   // /stalls/{stallId}/openings
-  if (parts[0] === 'stalls' && parts[1] && parts[2] === 'openings' && parts.length === 3) {
-    if (method === 'GET') return stalls.listOpenings({ stallId: parts[1], caller, event });
+  if (
+    parts[0] === 'stalls' &&
+    parts[1] &&
+    parts[2] === 'openings' &&
+    parts.length === 3
+  ) {
+    if (method === 'GET') {
+      return stalls.listOpenings({ stallId: parts[1], caller, event });
+    }
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 

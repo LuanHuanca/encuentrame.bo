@@ -16,8 +16,57 @@
     "s3Key": {
       "Type": "String"
     },
-    "bucketName": {
-      "Type": "String"
+    "storagedynamo324f6f26Name": {
+      "Type": "String",
+      "Default": "storagedynamo324f6f26Name"
+    },
+    "storagedynamo324f6f26Arn": {
+      "Type": "String",
+      "Default": "storagedynamo324f6f26Arn"
+    },
+    "storagedynamo324f6f26StreamArn": {
+      "Type": "String",
+      "Default": "storagedynamo324f6f26StreamArn"
+    },
+    "storagedynamo800bfc2bName": {
+      "Type": "String",
+      "Default": "storagedynamo800bfc2bName"
+    },
+    "storagedynamo800bfc2bArn": {
+      "Type": "String",
+      "Default": "storagedynamo800bfc2bArn"
+    },
+    "storagedynamo800bfc2bStreamArn": {
+      "Type": "String",
+      "Default": "storagedynamo800bfc2bStreamArn"
+    },
+    "storagedynamo81bc09dcName": {
+      "Type": "String",
+      "Default": "storagedynamo81bc09dcName"
+    },
+    "storagedynamo81bc09dcArn": {
+      "Type": "String",
+      "Default": "storagedynamo81bc09dcArn"
+    },
+    "storagedynamo81bc09dcStreamArn": {
+      "Type": "String",
+      "Default": "storagedynamo81bc09dcStreamArn"
+    },
+    "storages39e8ab6e7BucketName": {
+      "Type": "String",
+      "Default": "storages39e8ab6e7BucketName"
+    },
+    "storagedynamof7a7b9aaName": {
+      "Type": "String",
+      "Default": "storagedynamof7a7b9aaName"
+    },
+    "storagedynamof7a7b9aaArn": {
+      "Type": "String",
+      "Default": "storagedynamof7a7b9aaArn"
+    },
+    "storagedynamof7a7b9aaStreamArn": {
+      "Type": "String",
+      "Default": "storagedynamof7a7b9aaStreamArn"
     },
     "usersTable": {
       "Type": "String"
@@ -31,10 +80,13 @@
     "bedrockModelId": {
       "Type": "String"
     },
-    "productsTable": {
+    "locationPlaceIndexName": {
       "Type": "String"
     },
-    "locationPlaceIndexName": {
+    "bucketName": {
+      "Type": "String"
+    },
+    "productsTable": {
       "Type": "String"
     }
   },
@@ -91,8 +143,44 @@
             "REGION": {
               "Ref": "AWS::Region"
             },
-            "BUCKET_NAME": {
-              "Ref": "bucketName"
+            "STORAGE_DYNAMO324F6F26_NAME": {
+              "Ref": "storagedynamo324f6f26Name"
+            },
+            "STORAGE_DYNAMO324F6F26_ARN": {
+              "Ref": "storagedynamo324f6f26Arn"
+            },
+            "STORAGE_DYNAMO324F6F26_STREAMARN": {
+              "Ref": "storagedynamo324f6f26StreamArn"
+            },
+            "STORAGE_DYNAMO800BFC2B_NAME": {
+              "Ref": "storagedynamo800bfc2bName"
+            },
+            "STORAGE_DYNAMO800BFC2B_ARN": {
+              "Ref": "storagedynamo800bfc2bArn"
+            },
+            "STORAGE_DYNAMO800BFC2B_STREAMARN": {
+              "Ref": "storagedynamo800bfc2bStreamArn"
+            },
+            "STORAGE_DYNAMO81BC09DC_NAME": {
+              "Ref": "storagedynamo81bc09dcName"
+            },
+            "STORAGE_DYNAMO81BC09DC_ARN": {
+              "Ref": "storagedynamo81bc09dcArn"
+            },
+            "STORAGE_DYNAMO81BC09DC_STREAMARN": {
+              "Ref": "storagedynamo81bc09dcStreamArn"
+            },
+            "STORAGE_S39E8AB6E7_BUCKETNAME": {
+              "Ref": "storages39e8ab6e7BucketName"
+            },
+            "STORAGE_DYNAMOF7A7B9AA_NAME": {
+              "Ref": "storagedynamof7a7b9aaName"
+            },
+            "STORAGE_DYNAMOF7A7B9AA_ARN": {
+              "Ref": "storagedynamof7a7b9aaArn"
+            },
+            "STORAGE_DYNAMOF7A7B9AA_STREAMARN": {
+              "Ref": "storagedynamof7a7b9aaStreamArn"
             },
             "USERS_TABLE": {
               "Ref": "usersTable"
@@ -106,11 +194,14 @@
             "BEDROCK_MODEL_ID": {
               "Ref": "bedrockModelId"
             },
-            "PRODUCTS_TABLE": {
-              "Ref": "productsTable"
-            },
             "LOCATION_PLACE_INDEX_NAME": {
               "Ref": "locationPlaceIndexName"
+            },
+            "BUCKET_NAME": {
+              "Ref": "bucketName"
+            },
+            "PRODUCTS_TABLE": {
+              "Ref": "productsTable"
             }
           }
         },
@@ -278,6 +369,212 @@
         ]
       },
       "DependsOn": "LambdaExecutionRole"
+    },
+    "AmplifyResourcesPolicy": {
+      "DependsOn": [
+        "LambdaExecutionRole"
+      ],
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "amplify-lambda-execution-policy",
+        "Roles": [
+          {
+            "Ref": "LambdaExecutionRole"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Put*",
+                "dynamodb:Create*",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PartiQLInsert",
+                "dynamodb:Get*",
+                "dynamodb:BatchGetItem",
+                "dynamodb:List*",
+                "dynamodb:Describe*",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:PartiQLSelect",
+                "dynamodb:Update*",
+                "dynamodb:RestoreTable*",
+                "dynamodb:PartiQLUpdate",
+                "dynamodb:Delete*",
+                "dynamodb:PartiQLDelete"
+              ],
+              "Resource": [
+                {
+                  "Ref": "storagedynamo324f6f26Arn"
+                },
+                {
+                  "Fn::Join": [
+                    "/",
+                    [
+                      {
+                        "Ref": "storagedynamo324f6f26Arn"
+                      },
+                      "index/*"
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Put*",
+                "dynamodb:Create*",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PartiQLInsert",
+                "dynamodb:Get*",
+                "dynamodb:BatchGetItem",
+                "dynamodb:List*",
+                "dynamodb:Describe*",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:PartiQLSelect",
+                "dynamodb:Update*",
+                "dynamodb:RestoreTable*",
+                "dynamodb:PartiQLUpdate",
+                "dynamodb:Delete*",
+                "dynamodb:PartiQLDelete"
+              ],
+              "Resource": [
+                {
+                  "Ref": "storagedynamo800bfc2bArn"
+                },
+                {
+                  "Fn::Join": [
+                    "/",
+                    [
+                      {
+                        "Ref": "storagedynamo800bfc2bArn"
+                      },
+                      "index/*"
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Put*",
+                "dynamodb:Create*",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PartiQLInsert",
+                "dynamodb:Get*",
+                "dynamodb:BatchGetItem",
+                "dynamodb:List*",
+                "dynamodb:Describe*",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:PartiQLSelect",
+                "dynamodb:Update*",
+                "dynamodb:RestoreTable*",
+                "dynamodb:PartiQLUpdate",
+                "dynamodb:Delete*",
+                "dynamodb:PartiQLDelete"
+              ],
+              "Resource": [
+                {
+                  "Ref": "storagedynamo81bc09dcArn"
+                },
+                {
+                  "Fn::Join": [
+                    "/",
+                    [
+                      {
+                        "Ref": "storagedynamo81bc09dcArn"
+                      },
+                      "index/*"
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": "s3:ListBucket",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:s3:::",
+                      {
+                        "Ref": "storages39e8ab6e7BucketName"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+              ],
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:s3:::",
+                      {
+                        "Ref": "storages39e8ab6e7BucketName"
+                      },
+                      "/*"
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Put*",
+                "dynamodb:Create*",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PartiQLInsert",
+                "dynamodb:Get*",
+                "dynamodb:BatchGetItem",
+                "dynamodb:List*",
+                "dynamodb:Describe*",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:PartiQLSelect",
+                "dynamodb:Update*",
+                "dynamodb:RestoreTable*",
+                "dynamodb:PartiQLUpdate",
+                "dynamodb:Delete*",
+                "dynamodb:PartiQLDelete"
+              ],
+              "Resource": [
+                {
+                  "Ref": "storagedynamof7a7b9aaArn"
+                },
+                {
+                  "Fn::Join": [
+                    "/",
+                    [
+                      {
+                        "Ref": "storagedynamof7a7b9aaArn"
+                      },
+                      "index/*"
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   },
   "Outputs": {

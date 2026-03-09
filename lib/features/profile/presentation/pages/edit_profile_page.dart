@@ -26,7 +26,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late final TextEditingController _nameController;
 
   bool _saving = false;
-  String? _error;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -40,34 +40,45 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _saveProfile() async {
     FocusScope.of(context).unfocus();
-    setState(() => _error = null);
+    setState(() => _errorMessage = null);
 
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _saving = true);
 
     try {
-      final name = _nameController.text.trim();
-
-      await _api.put('/users/me', {'name': name});
+      await _api.put('/users/me', {
+        'name': _nameController.text.trim(),
+      });
 
       if (!mounted) return;
+
       AppSnackbar.success(context, 'Perfil actualizado.');
       Navigator.pop(context, true);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
-      setState(() => _error = UserFriendlyMessages.fromApiError(e));
-      AppSnackbar.error(context, _error!);
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
+
+      final message = UserFriendlyMessages.fromApiError(error);
+
+      setState(() => _errorMessage = message);
+      AppSnackbar.error(context, message);
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
-      setState(() => _error = UserFriendlyMessages.fromGenericError(e));
-      AppSnackbar.error(context, _error!);
+
+      final message = UserFriendlyMessages.fromGenericError(error);
+
+      setState(() => _errorMessage = message);
+      AppSnackbar.error(context, message);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -79,70 +90,85 @@ class _EditProfilePageState extends State<EditProfilePage> {
       appBar: AppBar(
         title: const Text('Editar perfil'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Datos de tu cuenta',
-                style: TextStyle(
-                  color: titleColor,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                initialValue: widget.email,
-                enabled: false,
-                decoration: const InputDecoration(
-                  labelText: 'Correo',
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              TextFormField(
-                controller: _nameController,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _save(),
-                decoration: const InputDecoration(
-                  labelText: 'Nombre',
-                  hintText: 'Tu nombre',
-                ),
-                validator: (v) {
-                  final value = (v ?? '').trim();
-                  if (value.isEmpty) return 'Ingresa tu nombre';
-                  if (value.length < 2) return 'Nombre no válido';
-                  if (value.length > 60) return 'Máximo 60 caracteres';
-                  return null;
-                },
-              ),
-
-              if (_error != null) ...[
-                const SizedBox(height: 12),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppThemeColors.backgroundGradient(context),
+          ),
+        ),
+        child: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
                 Text(
-                  _error!,
+                  'Datos de tu cuenta',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.w600,
+                    color: titleColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: widget.email,
+                  enabled: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Correo',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nameController,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _saveProfile(),
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    hintText: 'Tu nombre',
+                  ),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+
+                    if (text.isEmpty) {
+                      return 'Ingresa tu nombre';
+                    }
+
+                    if (text.length < 2) {
+                      return 'Nombre no válido';
+                    }
+
+                    if (text.length > 60) {
+                      return 'Máximo 60 caracteres';
+                    }
+
+                    return null;
+                  },
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _saveProfile,
+                    child: Text(_saving ? 'Guardando…' : 'Guardar cambios'),
                   ),
                 ),
               ],
-
-              const Spacer(),
-
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

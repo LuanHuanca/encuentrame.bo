@@ -78,6 +78,21 @@ async function assertOwnsStall(userId, stallId) {
   return !!res.Item;
 }
 
+async function findFirstOwnedStall(userId) {
+  const result = await ddb.send(new QueryCommand({
+    TableName: STALLS_TABLE,
+    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
+    ExpressionAttributeValues: {
+      ':pk': pkUser(userId),
+      ':pfx': 'STALL#'
+    },
+    ScanIndexForward: true,
+    Limit: 1
+  }));
+
+  return (result.Items && result.Items[0]) ? result.Items[0] : null;
+}
+
 function normalizeS3Key(k) {
   let key = String(k || '').trim();
   if (!key) return key;
@@ -595,6 +610,12 @@ async function list({ caller }) {
 async function create({ event, caller }) {
   const userId = callerId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!STALLS_TABLE) return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
+
+  const existingStall = await findFirstOwnedStall(userId);
+  if (existingStall) {
+    return bad(409, 'STALL_ALREADY_EXISTS', 'Ya tienes un puesto creado');
+  }
 
   const body = jsonBody(event);
   const name = String(body.name || '').trim();
@@ -962,15 +983,7 @@ async function getMy({ caller }) {
   const userId = callerId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
-  const q = await ddb.send(new QueryCommand({
-    TableName: STALLS_TABLE,
-    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
-    ExpressionAttributeValues: { ':pk': pkUser(userId), ':pfx': 'STALL#' },
-    ScanIndexForward: true,
-    Limit: 1
-  }));
-
-  const first = (q.Items && q.Items[0]) ? q.Items[0] : null;
+  const first = await findFirstOwnedStall(userId);
   if (!first) return ok({ stall: null, opening: null });
 
   return getCurrent({ stallId: first.stallId, caller });

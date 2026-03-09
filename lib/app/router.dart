@@ -30,19 +30,28 @@ class AppRouter {
       case AppRoutes.home:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const MainShell(initialIndex: MainShellIndex.home),
-        );
-
-      case AppRoutes.stalls:
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => const MainShell(initialIndex: MainShellIndex.stalls),
+          builder: (_) => const MainShell(
+            initialMode: MainShellMode.buyer,
+            initialIndex: 0,
+          ),
         );
 
       case AppRoutes.market:
         return MaterialPageRoute<void>(
           settings: settings,
-          builder: (_) => const MainShell(initialIndex: MainShellIndex.market),
+          builder: (_) => const MainShell(
+            initialMode: MainShellMode.buyer,
+            initialIndex: 0,
+          ),
+        );
+
+      case AppRoutes.stalls:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => const MainShell(
+            initialMode: MainShellMode.vendor,
+            initialIndex: 0,
+          ),
         );
 
       case AppRoutes.login:
@@ -59,6 +68,7 @@ class AppRouter {
 
       case AppRoutes.confirmSignup:
         final args = settings.arguments as Map<String, dynamic>? ?? {};
+
         return MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => ConfirmSignupPage(
@@ -75,6 +85,7 @@ class AppRouter {
 
       case AppRoutes.resetPassword:
         final args = settings.arguments as Map<String, dynamic>? ?? {};
+
         return MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => ResetPasswordPage(

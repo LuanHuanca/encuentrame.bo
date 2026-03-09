@@ -16,20 +16,35 @@ class ApiClientException implements Exception {
   final String? details;
 
   @override
-  String toString() =>
-      'ApiClientException(status=$statusCode, code=$code, message=$message, details=$details)';
+  String toString() {
+    return 'ApiClientException('
+        'status=$statusCode, '
+        'code=$code, '
+        'message=$message, '
+        'details=$details'
+        ')';
+  }
 }
 
-/// Cliente REST para API Gateway (Amplify Gen1 REST).
-/// Nota: tu API está montada en /api (por tu swagger).
+/// REST client for the API Gateway configured in Amplify.
+///
+/// The backend is mounted under `/api`, so every relative path is normalized
+/// to start with `/api/...`.
 class RestClient {
   static const String apiName = 'apic45634fb';
 
-  String _path(String p) {
-    var path = p.trim();
-    if (!path.startsWith('/')) path = '/$path';
-    if (path.startsWith('/api')) return path;
-    return '/api$path';
+  String _normalizePath(String path) {
+    var normalized = path.trim();
+
+    if (!normalized.startsWith('/')) {
+      normalized = '/$normalized';
+    }
+
+    if (normalized.startsWith('/api')) {
+      return normalized;
+    }
+
+    return '/api$normalized';
   }
 
   Future<Map<String, dynamic>> get(
@@ -37,104 +52,135 @@ class RestClient {
         Map<String, String>? queryParameters,
       }) async {
     try {
-      final op = Amplify.API.get(
-        _path(path),
+      final operation = Amplify.API.get(
+        _normalizePath(path),
         apiName: apiName,
         queryParameters: queryParameters,
       );
-      final res = await op.response;
-      return _handle(res.statusCode, res.decodeBody());
-    } on ApiException catch (e) {
+
+      final response = await operation.response;
+      return _handleResponse(response.statusCode, response.decodeBody());
+    } on ApiException catch (error) {
       throw ApiClientException(
-        e.message,
-        code: e.recoverySuggestion,
-        details: e.underlyingException?.toString(),
+        error.message,
+        code: error.recoverySuggestion,
+        details: error.underlyingException?.toString(),
       );
     }
   }
 
-  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> post(
+      String path,
+      Map<String, dynamic> body,
+      ) async {
     try {
-      final op = Amplify.API.post(
-        _path(path),
+      final operation = Amplify.API.post(
+        _normalizePath(path),
         apiName: apiName,
         body: HttpPayload.json(body),
       );
-      final res = await op.response;
-      return _handle(res.statusCode, res.decodeBody());
-    } on ApiException catch (e) {
+
+      final response = await operation.response;
+      return _handleResponse(response.statusCode, response.decodeBody());
+    } on ApiException catch (error) {
       throw ApiClientException(
-        e.message,
-        code: e.recoverySuggestion,
-        details: e.underlyingException?.toString(),
+        error.message,
+        code: error.recoverySuggestion,
+        details: error.underlyingException?.toString(),
       );
     }
   }
 
-  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> put(
+      String path,
+      Map<String, dynamic> body,
+      ) async {
     try {
-      final op = Amplify.API.put(
-        _path(path),
+      final operation = Amplify.API.put(
+        _normalizePath(path),
         apiName: apiName,
         body: HttpPayload.json(body),
       );
-      final res = await op.response;
-      return _handle(res.statusCode, res.decodeBody());
-    } on ApiException catch (e) {
+
+      final response = await operation.response;
+      return _handleResponse(response.statusCode, response.decodeBody());
+    } on ApiException catch (error) {
       throw ApiClientException(
-        e.message,
-        code: e.recoverySuggestion,
-        details: e.underlyingException?.toString(),
+        error.message,
+        code: error.recoverySuggestion,
+        details: error.underlyingException?.toString(),
       );
     }
   }
 
   Future<Map<String, dynamic>> del(String path) async {
     try {
-      final op = Amplify.API.delete(
-        _path(path),
+      final operation = Amplify.API.delete(
+        _normalizePath(path),
         apiName: apiName,
       );
-      final res = await op.response;
-      return _handle(res.statusCode, res.decodeBody());
-    } on ApiException catch (e) {
+
+      final response = await operation.response;
+      return _handleResponse(response.statusCode, response.decodeBody());
+    } on ApiException catch (error) {
       throw ApiClientException(
-        e.message,
-        code: e.recoverySuggestion,
-        details: e.underlyingException?.toString(),
+        error.message,
+        code: error.recoverySuggestion,
+        details: error.underlyingException?.toString(),
       );
     }
   }
 
-  Map<String, dynamic> _handle(int statusCode, String raw) {
-    Map<String, dynamic> json;
-    try {
-      json = raw.isEmpty ? <String, dynamic>{} : (jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      json = {'raw': raw};
-    }
+  Map<String, dynamic> _handleResponse(int statusCode, String rawBody) {
+    final json = _parseJsonMap(rawBody);
 
     if (statusCode >= 400) {
-      final err = (json['error'] is Map) ? (json['error'] as Map).cast<String, dynamic>() : null;
+      final error =
+      (json['error'] is Map) ? (json['error'] as Map).cast<String, dynamic>() : null;
+
       throw ApiClientException(
-        err?['message']?.toString() ?? 'HTTP $statusCode',
+        error?['message']?.toString() ?? 'HTTP $statusCode',
         statusCode: statusCode,
-        code: err?['code']?.toString(),
-        details: err?['details']?.toString(),
+        code: error?['code']?.toString(),
+        details: error?['details']?.toString(),
       );
     }
 
-    // Por si tu Lambda manda 200 con { error: {...} }
+    // Defensive fallback in case the backend responds with 200 but embeds
+    // an error payload.
     if (json['error'] is Map) {
-      final err = (json['error'] as Map).cast<String, dynamic>();
+      final error = (json['error'] as Map).cast<String, dynamic>();
+
       throw ApiClientException(
-        err['message']?.toString() ?? 'Error',
+        error['message']?.toString() ?? 'Unknown API error',
         statusCode: statusCode,
-        code: err['code']?.toString(),
-        details: err['details']?.toString(),
+        code: error['code']?.toString(),
+        details: error['details']?.toString(),
       );
     }
 
     return json;
+  }
+
+  Map<String, dynamic> _parseJsonMap(String rawBody) {
+    if (rawBody.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+
+    try {
+      final decoded = jsonDecode(rawBody);
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      if (decoded is Map) {
+        return decoded.cast<String, dynamic>();
+      }
+
+      return <String, dynamic>{'data': decoded};
+    } catch (_) {
+      return <String, dynamic>{'raw': rawBody};
+    }
   }
 }

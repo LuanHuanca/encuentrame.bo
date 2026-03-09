@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
@@ -21,45 +22,73 @@ class _MyStallsPageState extends State<MyStallsPage> {
 
   bool _loading = true;
   bool _busy = false;
-  List<Map<String, dynamic>> _stalls = [];
+
+  Map<String, dynamic>? _stall;
+  int _backendStallCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _load(showLoader: true);
+    _loadStall(showLoader: true);
   }
 
-  Future<void> _load({required bool showLoader}) async {
-    if (showLoader && mounted) setState(() => _loading = true);
+  Future<void> _loadStall({required bool showLoader}) async {
+    if (showLoader && mounted) {
+      setState(() => _loading = true);
+    }
 
     try {
-      final res = await _api.get('/stalls');
-      final list = (res['stalls'] as List?)?.cast<dynamic>() ?? const [];
-      final mapped = list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final response = await _api.get('/stalls');
+      final rawList = (response['stalls'] as List?)?.cast<dynamic>() ?? const [];
+
+      final stalls = rawList
+          .map((item) => (item as Map).cast<String, dynamic>())
+          .toList();
 
       if (!mounted) return;
-      setState(() => _stalls = mapped);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
+
+      setState(() {
+        _backendStallCount = stalls.length;
+        _stall = stalls.isEmpty ? null : stalls.first;
+      });
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
     } finally {
-      if (mounted && showLoader) setState(() => _loading = false);
+      if (mounted && showLoader) {
+        setState(() => _loading = false);
+      }
     }
   }
 
-  Future<void> _create() async {
-    final ok = await Navigator.push<bool>(
+  Future<void> _createStall() async {
+    final created = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const StallFormPage()),
     );
-    if (ok == true) _load(showLoader: true);
+
+    if (created == true) {
+      await _loadStall(showLoader: true);
+    }
   }
 
-  Future<void> _editName(Map<String, dynamic> stall) async {
-    final ok = await Navigator.push<bool>(
+  Future<void> _editStallName(Map<String, dynamic> stall) async {
+    final updated = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => StallFormPage(
@@ -68,71 +97,13 @@ class _MyStallsPageState extends State<MyStallsPage> {
         ),
       ),
     );
-    if (ok == true) _load(showLoader: true);
-  }
 
-  Future<void> _closeStall(Map<String, dynamic> stall) async {
-    final stallId = (stall['stallId'] ?? '').toString();
-    final name = (stall['name'] ?? 'Mi puesto').toString();
-
-    final ok = await AppConfirmDialog.show(
-      context,
-      title: 'Cerrar puesto',
-      message: '¿Cerrar "$name"? Podrás volver a abrir cuando quieras.',
-      confirmLabel: 'Cerrar',
-      cancelLabel: 'Cancelar',
-    );
-    if (ok != true) return;
-
-    setState(() => _busy = true);
-    try {
-      await _api.post('/stalls/$stallId/close', {});
-      if (!mounted) return;
-      AppSnackbar.success(context, 'Puesto cerrado.');
-      await _load(showLoader: false);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    if (updated == true) {
+      await _loadStall(showLoader: true);
     }
   }
 
-  Future<void> _deleteStall(Map<String, dynamic> stall) async {
-    final stallId = (stall['stallId'] ?? '').toString();
-    final name = (stall['name'] ?? 'Sin nombre').toString();
-
-    final ok = await AppConfirmDialog.show(
-      context,
-      title: 'Eliminar puesto',
-      message: '¿Eliminar "$name"? Esta acción no se puede deshacer.\n\nPara eliminarlo, el puesto debe estar cerrado.',
-      confirmLabel: 'Eliminar',
-      cancelLabel: 'Cancelar',
-      isDestructive: true,
-    );
-    if (ok != true) return;
-
-    setState(() => _busy = true);
-    try {
-      await _api.del('/stalls/$stallId');
-      if (!mounted) return;
-      AppSnackbar.success(context, 'Puesto eliminado.');
-      await _load(showLoader: false);
-    } on ApiClientException catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromApiError(e));
-    } catch (e, st) {
-      UserFriendlyMessages.logToConsole(e, st);
-      if (mounted) AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _openFlow(Map<String, dynamic> stall) async {
+  Future<void> _openOrViewDashboard(Map<String, dynamic> stall) async {
     final stallId = (stall['stallId'] ?? '').toString();
     final stallName = (stall['name'] ?? 'Mi puesto').toString();
     final isOpen = stall['isOpen'] == true;
@@ -140,163 +111,205 @@ class _MyStallsPageState extends State<MyStallsPage> {
     if (stallId.isEmpty) return;
 
     if (isOpen) {
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => StallDashboardPage(stallId: stallId, stallName: stallName),
+          builder: (_) => StallDashboardPage(
+            stallId: stallId,
+            stallName: stallName,
+          ),
         ),
       );
-      return;
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OpenStallPage(
+            stallId: stallId,
+            stallName: stallName,
+          ),
+        ),
+      );
     }
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OpenStallPage(stallId: stallId, stallName: stallName),
-      ),
-    );
-
     if (!mounted) return;
-    _load(showLoader: true);
+
+    await _loadStall(showLoader: true);
   }
 
-  void _showActions(Map<String, dynamic> stall) {
-    final stallName = (stall['name'] ?? 'Sin nombre').toString();
-    final isOpen = stall['isOpen'] == true;
+  Future<void> _closeStall(Map<String, dynamic> stall) async {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Mi puesto').toString();
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
-                    stallName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(isOpen ? Icons.dashboard_outlined : Icons.play_circle_outline),
-                  title: Text(isOpen ? 'Ir al panel' : 'Abrir puesto'),
-                  subtitle: Text(isOpen ? 'Ver productos, ubicación y cerrar.' : 'Ubicación + 2 fotos + inventario.'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _openFlow(stall);
-                  },
-                ),
-                if (isOpen) ...[
-                  ListTile(
-                    leading: Icon(Icons.stop_circle_outlined, color: Theme.of(context).colorScheme.error),
-                    title: Text('Cerrar puesto', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    onTap: _busy
-                        ? null
-                        : () {
-                      Navigator.pop(ctx);
-                      _closeStall(stall);
-                    },
-                  ),
-                ],
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined),
-                  title: const Text('Editar nombre'),
-                  onTap: _busy
-                      ? null
-                      : () {
-                    Navigator.pop(ctx);
-                    _editName(stall);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-                  title: Text('Eliminar', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  onTap: _busy
-                      ? null
-                      : () {
-                    Navigator.pop(ctx);
-                    _deleteStall(stall);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Cerrar puesto',
+      message:
+      '¿Cerrar "$stallName"? Después podrás volver a abrirlo cuando quieras.',
+      confirmLabel: 'Cerrar',
+      cancelLabel: 'Cancelar',
     );
+
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+
+    try {
+      await _api.post('/stalls/$stallId/close', {});
+
+      if (!mounted) return;
+
+      AppSnackbar.success(context, 'Puesto cerrado.');
+      await _loadStall(showLoader: false);
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _deleteStall(Map<String, dynamic> stall) async {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Mi puesto').toString();
+
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar puesto',
+      message:
+      '¿Eliminar "$stallName"? Para eliminarlo, antes debe estar cerrado.',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      isDestructive: true,
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+
+    try {
+      await _api.del('/stalls/$stallId');
+
+      if (!mounted) return;
+
+      AppSnackbar.success(context, 'Puesto eliminado.');
+
+      setState(() {
+        _stall = null;
+        _backendStallCount = 0;
+      });
+    } on ApiClientException catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromApiError(error),
+        );
+      }
+    } catch (error, stackTrace) {
+      UserFriendlyMessages.logToConsole(error, stackTrace);
+
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          UserFriendlyMessages.fromGenericError(error),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final sub = AppThemeColors.subtitleColor(context);
+    final shell = MainShell.of(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mis puestos'),
+        title: const Text('Mi puesto'),
         actions: [
           IconButton(
-            onPressed: (_loading || _busy) ? null : () => _load(showLoader: true),
+            onPressed: shell == null ? null : shell.switchToBuyer,
+            icon: const Icon(Icons.search_rounded),
+            tooltip: 'Cambiar a comprador',
+          ),
+          IconButton(
+            onPressed: (_loading || _busy)
+                ? null
+                : () => _loadStall(showLoader: true),
             icon: const Icon(Icons.refresh),
             tooltip: 'Actualizar',
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: (_loading || _busy) ? null : _create,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _stall == null
+          ? FloatingActionButton.extended(
+        onPressed: (_loading || _busy) ? null : _createStall,
+        icon: const Icon(Icons.add),
+        label: const Text('Crear puesto'),
+      )
+          : null,
       body: RefreshIndicator(
-        onRefresh: () => _load(showLoader: false),
+        onRefresh: () => _loadStall(showLoader: false),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+              : ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             children: [
               Text(
-                'Crea, abre y gestiona tus puestos.',
-                style: TextStyle(color: sub, fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: _stalls.isEmpty
-                    ? _EmptyState(subtitleColor: sub, onCreate: _busy ? null : _create)
-                    : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: _stalls.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) {
-                    final stall = _stalls[i];
-                    return _StallCard(
-                      stall: stall,
-                      busy: _busy,
-                      onPrimary: () => _openFlow(stall),
-                      onMore: () => _showActions(stall),
-                    );
-                  },
+                'Publica tu ubicación actual para que los compradores te encuentren.',
+                style: TextStyle(
+                  color: subtitleColor,
+                  fontSize: 14,
                 ),
               ),
+              const SizedBox(height: 16),
+              if (_backendStallCount > 1) ...[
+                _InfoBanner(
+                  message:
+                  'Se detectaron varios puestos en backend. Este MVP solo usa el primero.',
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_stall == null)
+                _EmptyState(
+                  subtitleColor: subtitleColor,
+                  onCreate: _busy ? null : _createStall,
+                )
+              else
+                _SingleStallCard(
+                  stall: _stall!,
+                  busy: _busy,
+                  onPrimary: () => _openOrViewDashboard(_stall!),
+                  onEdit: () => _editStallName(_stall!),
+                  onClose: _stall!['isOpen'] == true
+                      ? () => _closeStall(_stall!)
+                      : null,
+                  onDelete: () => _deleteStall(_stall!),
+                ),
             ],
           ),
         ),
@@ -305,82 +318,119 @@ class _MyStallsPageState extends State<MyStallsPage> {
   }
 }
 
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.orangeBright.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message)),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.subtitleColor, required this.onCreate});
+  const _EmptyState({
+    required this.subtitleColor,
+    required this.onCreate,
+  });
 
   final Color subtitleColor;
   final VoidCallback? onCreate;
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = AppThemeColors.titleColor(context);
+
     return Center(
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.storefront_outlined, size: 56, color: subtitleColor),
-            const SizedBox(height: 14),
-            Text(
-              'Aún no tienes puestos',
-              style: TextStyle(
-                color: AppThemeColors.titleColor(context),
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
+      child: Column(
+        children: [
+          const SizedBox(height: 56),
+          Icon(
+            Icons.storefront_outlined,
+            size: 64,
+            color: subtitleColor,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Todavía no tienes un puesto',
+            style: TextStyle(
+              color: titleColor,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Crea uno para empezar a vender con ubicación, fotos e inventario.',
-              style: TextStyle(color: subtitleColor),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Crea uno para poder publicar tu ubicación, fotos e inventario.',
+            style: TextStyle(
+              color: subtitleColor,
+              fontSize: 14,
             ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onCreate,
-              icon: const Icon(Icons.add),
-              label: const Text('Crear puesto'),
-            ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            onPressed: onCreate,
+            icon: const Icon(Icons.add),
+            label: const Text('Crear puesto'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StallCard extends StatelessWidget {
-  const _StallCard({
+class _SingleStallCard extends StatelessWidget {
+  const _SingleStallCard({
     required this.stall,
     required this.busy,
     required this.onPrimary,
-    required this.onMore,
+    required this.onEdit,
+    required this.onClose,
+    required this.onDelete,
   });
 
   final Map<String, dynamic> stall;
   final bool busy;
   final VoidCallback onPrimary;
-  final VoidCallback onMore;
+  final VoidCallback onEdit;
+  final VoidCallback? onClose;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final title = AppThemeColors.titleColor(context);
-    final sub = AppThemeColors.subtitleColor(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
-    final stallName = (stall['name'] ?? 'Sin nombre').toString();
+    final stallName = (stall['name'] ?? 'Mi puesto').toString();
     final isOpen = stall['isOpen'] == true;
-    final address = (stall['currentAddressLabel'] ?? '').toString().trim();
-
-    final primaryLabel = isOpen ? 'Panel' : 'Abrir';
-    final primaryIcon = isOpen ? Icons.dashboard_outlined : Icons.play_arrow;
+    final addressLabel =
+    (stall['currentAddressLabel'] ?? '').toString().trim();
 
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -389,54 +439,107 @@ class _StallCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     stallName,
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: title),
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 10),
                 Chip(
-                  label: Text(isOpen ? 'Abierto' : 'Cerrado', style: const TextStyle(fontSize: 12)),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  label: Text(
+                    isOpen ? 'Abierto' : 'Cerrado',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   backgroundColor: isOpen
-                      ? AppColors.statusOpen.withValues(alpha: 0.15)
-                      : sub.withValues(alpha: 0.12),
+                      ? AppColors.statusOpen.withValues(alpha: 0.16)
+                      : subtitleColor.withValues(alpha: 0.12),
                 ),
               ],
             ),
-            if (isOpen && address.isNotEmpty) ...[
-              const SizedBox(height: 6),
+            if (addressLabel.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.place_outlined, size: 16, color: sub),
+                  Icon(
+                    Icons.place_outlined,
+                    size: 18,
+                    color: subtitleColor,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      address,
-                      style: TextStyle(color: sub, fontSize: 13),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      addressLabel,
+                      style: TextStyle(
+                        color: subtitleColor,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.tonalIcon(
+                  child: FilledButton.icon(
                     onPressed: busy ? null : onPrimary,
-                    icon: Icon(primaryIcon),
-                    label: Text(primaryLabel),
+                    icon: Icon(
+                      isOpen
+                          ? Icons.dashboard_outlined
+                          : Icons.play_arrow_rounded,
+                    ),
+                    label: Text(
+                      isOpen ? 'Ver panel' : 'Abrir puesto',
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                IconButton(
-                  onPressed: busy ? null : onMore,
-                  icon: const Icon(Icons.more_horiz_rounded),
-                  tooltip: 'Acciones',
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : onEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Editar nombre'),
+                  ),
+                ),
+              ],
+            ),
+            if (isOpen && onClose != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: busy ? null : onClose,
+                      icon: const Icon(Icons.stop_circle_outlined),
+                      label: const Text('Cerrar puesto'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : onDelete,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Eliminar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
