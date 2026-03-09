@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/router.dart';
 import '../../../../app/theme.dart';
 import '../../../../app/theme_toggle_icon.dart';
+import '../../../../core/config/app_info.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
@@ -28,7 +29,7 @@ class _LoginPageState extends State<LoginPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _redirectIfAlreadySignedIn(),
+          (_) => _redirectIfAlreadySignedIn(),
     );
   }
 
@@ -88,7 +89,10 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
     }
+
     final themeColors = AppThemeColors.backgroundGradient(context);
+    final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Scaffold(
       body: Stack(
@@ -112,21 +116,48 @@ class _LoginPageState extends State<LoginPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: 48),
+
+                      Align(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.blueNeon.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppColors.blueNeon.withValues(alpha: 0.28),
+                            ),
+                          ),
+                          child: Text(
+                            AppInfo.versionLabel,
+                            style: TextStyle(
+                              color: titleColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
                       Text(
-                        'Encuéntrame',
+                        AppInfo.appName,
                         style: Theme.of(context).textTheme.headlineLarge
                             ?.copyWith(
-                              color: AppThemeColors.titleColor(context),
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -0.5,
-                            ),
+                          color: titleColor,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Encuentra lo que buscas en el mercado.',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppThemeColors.subtitleColor(context),
+                          color: subtitleColor,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -161,7 +192,7 @@ class _LoginPageState extends State<LoginPage> {
                             size: 22,
                           ),
                           onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                                () => _obscurePassword = !_obscurePassword,
                           ),
                         ),
                         validator: (v) {
@@ -205,7 +236,7 @@ class _LoginPageState extends State<LoginPage> {
                           Text(
                             '¿No tienes cuenta? ',
                             style: TextStyle(
-                              color: AppThemeColors.subtitleColor(context),
+                              color: subtitleColor,
                               fontSize: 15,
                             ),
                           ),
@@ -230,6 +261,19 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ],
                       ),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Build ${AppInfo.appVersion}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: subtitleColor.withValues(alpha: 0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -237,8 +281,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
-
-          Positioned(
+          const Positioned(
             top: 0,
             right: 0,
             child: SafeArea(child: ThemeToggleIcon()),

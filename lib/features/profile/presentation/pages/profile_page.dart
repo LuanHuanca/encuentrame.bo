@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/router.dart';
 import '../../../../app/shell/main_shell.dart';
 import '../../../../app/theme.dart';
+import '../../../../core/config/app_info.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
@@ -329,6 +330,13 @@ class _ProfilePageState extends State<ProfilePage>
                     );
                   },
                 ),
+                const SizedBox(height: 12),
+                _VersionCard(
+                  version: AppInfo.appVersion,
+                  fillColor: fillColor,
+                  titleColor: titleColor,
+                  subtitleColor: subtitleColor,
+                ),
                 const SizedBox(height: 28),
                 SizedBox(
                   height: 52,
@@ -421,6 +429,64 @@ class _ProfileTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VersionCard extends StatelessWidget {
+  const _VersionCard({
+    required this.version,
+    required this.fillColor,
+    required this.titleColor,
+    required this.subtitleColor,
+  });
+
+  final String version;
+  final Color fillColor;
+  final Color titleColor;
+  final Color subtitleColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: fillColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.orangeBright,
+            size: 26,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Versión de la app',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Build $version',
+                  style: TextStyle(
+                    color: subtitleColor,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
