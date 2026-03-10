@@ -1,0 +1,13 @@
+{
+  "resourceName": "dynamof7a7b9aa",
+  "tableName": "products-dev",
+  "partitionKey": {
+    "fieldName": "pk",
+    "fieldType": "string"
+  },
+  "sortKey": {
+    "fieldName": "sk",
+    "fieldType": "string"
+  },
+  "gsi": [],
+  "triggerFunctions": []

@@ -6,6 +6,7 @@ import '../../../../app/theme_toggle_icon.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
+import '../widgets/google_sign_in_button.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key, required this.auth});
@@ -52,6 +53,23 @@ class _SignupPageState extends State<SignupPage> {
       AppSnackbar.error(
         context,
         UserFriendlyMessages.fromAuthError(widget.auth.error),
+      );
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    try {
+      await widget.auth.signInWithGoogle();
+      if (!mounted) return;
+      if (await widget.auth.isSignedIn()) {
+        Navigator.pushNamedAndRemoveUntil(
+            context, AppRoutes.home, (r) => false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackbar.error(
+        context,
+        e.toString(),
       );
     }
   }
@@ -182,6 +200,41 @@ class _SignupPageState extends State<SignupPage> {
                           onPressed: widget.auth.loading ? null : _submit,
                           child: Text(widget.auth.loading ? 'Creando...' : 'Crear cuenta'),
                         ),
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                              child: Divider(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withOpacity(0.5))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'O',
+                              style: TextStyle(
+                                color: AppThemeColors.subtitleColor(context),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                              child: Divider(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withOpacity(0.5))),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+
+                      GoogleSignInButton(
+                        onPressed: _handleGoogleSignIn,
+                        isLoading: widget.auth.loading,
                       ),
 
                       const SizedBox(height: 18),

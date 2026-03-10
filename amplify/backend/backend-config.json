@@ -31,7 +31,9 @@
         "signupAttributes": [
           "EMAIL"
         ],
-        "socialProviders": [],
+        "socialProviders": [
+          "GOOGLE"
+        ],
         "usernameAttributes": [
           "EMAIL"
         ],
@@ -115,6 +117,14 @@
     }
   },
   "parameters": {
+    "AMPLIFY_auth_encuentrameboed4663da_googleClientId": {
+      "usedBy": [
+        {
+          "category": "auth",
+          "resourceName": "encuentrameboed4663da"
+        }
+      ]
+    },
     "AMPLIFY_function_encuentrameApi_bedrockModelId": {
       "usedBy": [
         {

@@ -81,6 +81,10 @@ class AuthController extends ChangeNotifier {
     return result ?? false;
   }
 
+  Future<void> signInWithGoogle() async {
+    return _run(() => _repo.signInWithGoogle());
+  }
+
   Future<void> signOut() async {
     await _run(() => _repo.signOut());
   }

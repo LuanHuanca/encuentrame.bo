@@ -64,4 +64,8 @@ amplify-gradle-config.json
 amplifytools.xcconfig
 .secret-*
 **.sample
+# Directorios de build de Amplify (contienen secretos generados)
+amplify/backend/awscloudformation/build/
+amplify/backend/auth/*/build/
+amplify/\#current-cloud-backend/
 #amplify-do-not-edit-end

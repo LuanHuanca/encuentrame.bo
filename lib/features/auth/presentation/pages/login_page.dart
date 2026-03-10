@@ -7,6 +7,7 @@ import '../../../../core/config/app_info.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import '../auth_controller.dart';
+import '../widgets/google_sign_in_button.dart';
 
 /// Pantalla de inicio de sesión con diseño azul y naranja.
 class LoginPage extends StatefulWidget {
@@ -65,6 +66,23 @@ class _LoginPageState extends State<LoginPage> {
       AppSnackbar.error(
         context,
         UserFriendlyMessages.fromAuthError(widget.auth.error),
+      );
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    try {
+      await widget.auth.signInWithGoogle();
+      if (!mounted) return;
+      if (await widget.auth.isSignedIn()) {
+        Navigator.pushNamedAndRemoveUntil(
+            context, AppRoutes.home, (r) => false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackbar.error(
+        context,
+        e.toString(),
       );
     }
   }
@@ -227,6 +245,41 @@ class _LoginPageState extends State<LoginPage> {
                         label: widget.auth.loading
                             ? 'Cargando...'
                             : 'Iniciar sesión',
+                      ),
+
+                      const SizedBox(height: 24),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                              child: Divider(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withOpacity(0.5))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'O',
+                              style: TextStyle(
+                                color: subtitleColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                              child: Divider(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withOpacity(0.5))),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+
+                      GoogleSignInButton(
+                        onPressed: _handleGoogleSignIn,
+                        isLoading: widget.auth.loading,
                       ),
 
                       const SizedBox(height: 24),

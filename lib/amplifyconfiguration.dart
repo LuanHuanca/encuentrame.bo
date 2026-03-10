@@ -36,8 +36,25 @@ const amplifyconfig = '''{
                         "Region": "us-east-1"
                     }
                 },
+                "GoogleSignIn": {
+                    "Permissions": "email,profile,openid",
+                    "ClientId-WebApp": "499707050940-7p9o4n4ap8a3jn2ehn91ai98cd6g0egs.apps.googleusercontent.com"
+                },
                 "Auth": {
                     "Default": {
+                        "OAuth": {
+                            "WebDomain": "encuentramebo27e7e35d-27e7e35d-dev.auth.us-east-1.amazoncognito.com",
+                            "AppClientId": "68vf546dc5jqn55m6ana54svcr",
+                            "SignInRedirectURI": "encuentrame://callback/",
+                            "SignOutRedirectURI": "encuentrame://signout/",
+                            "Scopes": [
+                                "phone",
+                                "email",
+                                "openid",
+                                "profile",
+                                "aws.cognito.signin.user.admin"
+                            ]
+                        },
                         "authenticationFlowType": "USER_SRP_AUTH",
                         "mfaConfiguration": "OFF",
                         "mfaTypes": [
@@ -50,7 +67,9 @@ const amplifyconfig = '''{
                         "signupAttributes": [
                             "EMAIL"
                         ],
-                        "socialProviders": [],
+                        "socialProviders": [
+                            "GOOGLE"
+                        ],
                         "usernameAttributes": [
                             "EMAIL"
                         ],

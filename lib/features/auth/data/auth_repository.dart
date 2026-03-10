@@ -1,3 +1,4 @@
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
 class AuthRepository {
@@ -41,6 +42,23 @@ class AuthRepository {
     );
     if (!res.isSignedIn) {
       throw Exception('Login incompleto: ${res.nextStep.signInStep}');
+    }
+  }
+
+  Future<void> signInWithGoogle() async {
+    try {
+      final result = await Amplify.Auth.signInWithWebUI(
+        provider: AuthProvider.google,
+      );
+
+      if (!result.isSignedIn) {
+        throw Exception(
+          'El inicio de sesión con Google no se completó.',
+        );
+      }
+    } catch (e) {
+      // Re-lanzar con el mensaje real para diagnóstico
+      throw Exception('Google Sign-In falló: $e');
     }
   }
 
