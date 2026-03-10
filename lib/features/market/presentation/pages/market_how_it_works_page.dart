@@ -29,15 +29,12 @@ class MarketHowItWorksPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              _HeroCard(
-                titleColor: titleColor,
-                subtitleColor: subtitleColor,
-              ),
-              const SizedBox(height: 16),
+              const _HeroCard(),
+              const SizedBox(height: 20),
               _SectionTitle(
-                title: '¿Qué hace la app?',
+                title: '¿Qué es Encuéntrame?',
                 subtitle:
-                'Encuéntrame conecta compradores con vendedores ambulantes en tiempo real.',
+                'Una app pensada para ayudarte a encontrar puestos y productos cercanos de forma rápida, simple y visual.',
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
@@ -48,7 +45,7 @@ class MarketHowItWorksPage extends StatelessWidget {
                 iconColor: AppColors.orangeBright,
                 title: 'Encuentra productos cerca de ti',
                 description:
-                'La app detecta tu ubicación y te muestra productos disponibles ordenados del puesto más cercano al más lejano.',
+                'La app detecta tu ubicación y te muestra opciones reales que están disponibles alrededor tuyo en ese momento.',
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
@@ -57,16 +54,17 @@ class MarketHowItWorksPage extends StatelessWidget {
                 fillColor: fillColor,
                 icon: Icons.storefront_rounded,
                 iconColor: AppColors.primary,
-                title: 'Da visibilidad al comercio informal',
+                title: 'Da visibilidad a los puestos',
                 description:
-                'Un vendedor ambulante puede publicar su puesto actual, sus fotos y su inventario para que otras personas lo encuentren fácilmente.',
+                'Los vendedores pueden mostrar su puesto, sus productos y su ubicación actual para que más personas los encuentren fácilmente.',
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               _SectionTitle(
-                title: 'Cómo se usa',
-                subtitle: 'Dos flujos simples: comprador y vendedor.',
+                title: '¿Cómo se usa?',
+                subtitle:
+                'La misma cuenta te permite usar la app de dos maneras, según lo que necesites en el momento.',
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
@@ -75,13 +73,13 @@ class MarketHowItWorksPage extends StatelessWidget {
                 fillColor: fillColor,
                 accentColor: AppColors.orangeBright,
                 icon: Icons.shopping_bag_rounded,
-                title: 'Como comprador',
+                title: 'Modo comprador',
                 steps: const [
-                  'Abres la app y se detecta tu ubicación.',
-                  'Ves productos cercanos automáticamente, sin escribir nada.',
-                  'Si quieres, buscas algo específico como pipocas, api o poleras.',
-                  'La app te muestra qué puesto lo tiene y qué tan cerca está.',
-                  'Abres el mapa y vas directo al vendedor.',
+                  'Abres la app y se detecta tu ubicación actual.',
+                  'Ves productos y puestos cercanos automáticamente.',
+                  'Puedes buscar algo específico si quieres encontrarlo más rápido.',
+                  'Tocas un resultado y revisas más información del puesto.',
+                  'Usas el mapa para ubicarte y llegar al lugar.',
                 ],
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
@@ -91,21 +89,22 @@ class MarketHowItWorksPage extends StatelessWidget {
                 fillColor: fillColor,
                 accentColor: AppColors.primary,
                 icon: Icons.add_business_rounded,
-                title: 'Como vendedor',
+                title: 'Modo vendedor',
                 steps: const [
                   'Creas tu puesto una sola vez.',
-                  'Cuando llegas a vender, abres tu puesto desde tu ubicación actual.',
-                  'Subes una foto del puesto y otra de tus productos.',
-                  'Escribes o dictas tu inventario.',
+                  'Cuando empiezas a vender, publicas tu ubicación actual.',
+                  'Subes fotos de tu puesto y de tus productos.',
+                  'Agregas tu inventario por texto o voz.',
                   'Tus productos quedan visibles para compradores cercanos.',
                 ],
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               _SectionTitle(
-                title: 'Lo importante del MVP',
-                subtitle: 'Simple, funcional y enfocado.',
+                title: 'Lo más importante',
+                subtitle:
+                'Todo está pensado para que la experiencia sea rápida, clara y útil.',
                 titleColor: titleColor,
                 subtitleColor: subtitleColor,
               ),
@@ -117,8 +116,9 @@ class MarketHowItWorksPage extends StatelessWidget {
                       fillColor: fillColor,
                       icon: Icons.place_rounded,
                       iconColor: AppColors.primary,
-                      title: 'Ubicación real',
-                      description: 'El puesto puede cambiar de lugar cada día.',
+                      title: 'Ubicación actual',
+                      description:
+                      'Los puestos pueden aparecer justo donde están vendiendo en ese momento.',
                       titleColor: titleColor,
                       subtitleColor: subtitleColor,
                     ),
@@ -129,9 +129,9 @@ class MarketHowItWorksPage extends StatelessWidget {
                       fillColor: fillColor,
                       icon: Icons.route_rounded,
                       iconColor: AppColors.orangeBright,
-                      title: 'Cercanía',
+                      title: 'Más cerca primero',
                       description:
-                      'Los resultados se ordenan del más cercano al más lejano.',
+                      'Los resultados se ordenan para que encuentres antes lo que te queda más próximo.',
                       titleColor: titleColor,
                       subtitleColor: subtitleColor,
                     ),
@@ -146,9 +146,9 @@ class MarketHowItWorksPage extends StatelessWidget {
                       fillColor: fillColor,
                       icon: Icons.inventory_2_rounded,
                       iconColor: AppColors.blueNeon,
-                      title: 'Inventario visible',
+                      title: 'Productos visibles',
                       description:
-                      'El comprador puede ver qué productos hay disponibles.',
+                      'Puedes ver mejor qué está ofreciendo cada puesto antes de moverte.',
                       titleColor: titleColor,
                       subtitleColor: subtitleColor,
                     ),
@@ -161,27 +161,14 @@ class MarketHowItWorksPage extends StatelessWidget {
                       iconColor: AppColors.statusOpen,
                       title: 'Mapa rápido',
                       description:
-                      'Puedes abrir la ubicación exacta del vendedor.',
+                      'La ubicación del puesto se muestra de forma visual y fácil de entender.',
                       titleColor: titleColor,
                       subtitleColor: subtitleColor,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              _SectionTitle(
-                title: 'Qué no hace todavía',
-                subtitle: 'Para no sobrecargar el MVP.',
-                titleColor: titleColor,
-                subtitleColor: subtitleColor,
-              ),
-              const SizedBox(height: 12),
-              _LimitationsCard(
-                fillColor: fillColor,
-                titleColor: titleColor,
-                subtitleColor: subtitleColor,
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               _ClosingCard(
                 fillColor: fillColor,
                 titleColor: titleColor,
@@ -196,13 +183,7 @@ class MarketHowItWorksPage extends StatelessWidget {
 }
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.titleColor,
-    required this.subtitleColor,
-  });
-
-  final Color titleColor;
-  final Color subtitleColor;
+  const _HeroCard();
 
   @override
   Widget build(BuildContext context) {
@@ -235,20 +216,20 @@ class _HeroCard extends StatelessWidget {
             children: const [
               _HeroChip(
                 icon: Icons.near_me_rounded,
-                label: 'Tiempo real',
+                label: 'Ubicación en tiempo real',
               ),
               _HeroChip(
                 icon: Icons.storefront_rounded,
-                label: 'Comercio informal',
+                label: 'Puestos cercanos',
               ),
               _HeroChip(
-                icon: Icons.public_rounded,
-                label: 'Más visible',
+                icon: Icons.shopping_bag_rounded,
+                label: 'Compra y vende',
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
+          const Text(
             'Encuéntrame',
             style: TextStyle(
               color: Colors.white,
@@ -259,7 +240,7 @@ class _HeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Una app para encontrar vendedores ambulantes y productos cercanos en el momento exacto en que están vendiendo.',
+            'Descubre productos cercanos y encuentra puestos reales desde una experiencia simple, visual y útil.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.92),
               fontSize: 14,
@@ -544,7 +525,7 @@ class _MiniFeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 168,
+      height: 172,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: fillColor,
@@ -573,66 +554,6 @@ class _MiniFeatureCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LimitationsCard extends StatelessWidget {
-  const _LimitationsCard({
-    required this.fillColor,
-    required this.titleColor,
-    required this.subtitleColor,
-  });
-
-  final Color fillColor;
-  final Color titleColor;
-  final Color subtitleColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      'No hay carrito de compras.',
-      'No hay pagos dentro de la app.',
-      'No hay pedidos ni reservas.',
-      'No busca vender online: busca ayudarte a encontrar al vendedor físico.',
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: fillColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: items
-            .map(
-              (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.remove_circle_outline_rounded,
-                  color: AppColors.orangeAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item,
-                    style: TextStyle(
-                      color: subtitleColor,
-                      fontSize: 14,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        )
-            .toList(),
       ),
     );
   }
@@ -673,7 +594,7 @@ class _ClosingCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Encuéntrame ayuda a que el comercio ambulante deje de ser invisible. El comprador encuentra rápido lo que necesita y el vendedor gana visibilidad digital sin complicarse.',
+            'Encuéntrame te ayuda a descubrir productos y puestos cercanos de manera más rápida, clara y visual. Es una experiencia pensada para conectar mejor a quienes buscan comprar con quienes están vendiendo en el momento exacto.',
             style: TextStyle(
               color: subtitleColor,
               fontSize: 14,

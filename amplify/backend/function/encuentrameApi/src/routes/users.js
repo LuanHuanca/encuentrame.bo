@@ -15,7 +15,7 @@ function pkUser(userId) {
 }
 
 function callerEmail(caller) {
-  return caller?.email || null;
+  return caller?.email || caller?.username || null;
 }
 
 async function me({ caller }) {
@@ -25,10 +25,15 @@ async function me({ caller }) {
   const emailFromToken = callerEmail(caller) || '';
 
   if (!config.USERS_TABLE) {
-    return ok({ userId, name: '', email: emailFromToken, role: '' });
+    return ok({
+      userId,
+      name: '',
+      email: emailFromToken,
+    });
   }
 
   const key = { pk: pkUser(userId), sk: 'PROFILE' };
+
   const response = await ddb.send(
     new GetCommand({
       TableName: config.USERS_TABLE,
@@ -47,7 +52,6 @@ async function me({ caller }) {
       userId,
       name: '',
       email: emailFromToken,
-      role: '',
       createdAt: now,
       updatedAt: now,
     };
@@ -64,9 +68,10 @@ async function me({ caller }) {
 
   return ok({
     userId,
-    role: item.role || '',
     name: item.name || '',
     email: item.email || emailFromToken || '',
+    createdAt: item.createdAt || null,
+    updatedAt: item.updatedAt || null,
   });
 }
 
