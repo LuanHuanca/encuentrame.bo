@@ -77,16 +77,16 @@
     "openinglogsTable": {
       "Type": "String"
     },
-    "bedrockModelId": {
+    "bucketName": {
+      "Type": "String"
+    },
+    "productsTable": {
       "Type": "String"
     },
     "locationPlaceIndexName": {
       "Type": "String"
     },
-    "bucketName": {
-      "Type": "String"
-    },
-    "productsTable": {
+    "bedrockModelId": {
       "Type": "String"
     }
   },
@@ -191,17 +191,17 @@
             "OPENINGLOGS_TABLE": {
               "Ref": "openinglogsTable"
             },
-            "BEDROCK_MODEL_ID": {
-              "Ref": "bedrockModelId"
-            },
-            "LOCATION_PLACE_INDEX_NAME": {
-              "Ref": "locationPlaceIndexName"
-            },
             "BUCKET_NAME": {
               "Ref": "bucketName"
             },
             "PRODUCTS_TABLE": {
               "Ref": "productsTable"
+            },
+            "LOCATION_PLACE_INDEX_NAME": {
+              "Ref": "locationPlaceIndexName"
+            },
+            "BEDROCK_MODEL_ID": {
+              "Ref": "bedrockModelId"
             }
           }
         },

@@ -1,5 +1,6 @@
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../app/router.dart';
 import '../../../../app/shell/main_shell.dart';
@@ -31,6 +32,7 @@ class _ProfilePageState extends State<ProfilePage>
   String _userId = '';
   String _name = '';
   String _email = '';
+  String? _updatedAt;
 
   @override
   void initState() {
@@ -70,6 +72,7 @@ class _ProfilePageState extends State<ProfilePage>
         _userId = (response['userId'] ?? '').toString();
         _name = (response['name'] ?? '').toString();
         _email = (response['email'] ?? '').toString();
+        _updatedAt = response['updatedAt']?.toString();
         _loading = false;
       });
 
@@ -110,6 +113,43 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     return trimmed[0].toUpperCase();
+  }
+
+  String _displayName() {
+    final trimmedName = _name.trim();
+    if (trimmedName.isNotEmpty) return trimmedName;
+
+    final trimmedEmail = _email.trim();
+    if (trimmedEmail.isNotEmpty) {
+      return trimmedEmail.split('@').first;
+    }
+
+    return 'Usuario';
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.isEmpty) return 'Sin registro';
+
+    try {
+      final date = DateTime.parse(iso).toLocal();
+
+      String twoDigits(int value) => value.toString().padLeft(2, '0');
+
+      return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
+          '${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  Future<void> _copyUserId() async {
+    if (_userId.trim().isEmpty) return;
+
+    await Clipboard.setData(ClipboardData(text: _userId));
+
+    if (!mounted) return;
+
+    AppSnackbar.success(context, 'ID copiado.');
   }
 
   Future<void> _openEditProfile() async {
@@ -157,7 +197,7 @@ class _ProfilePageState extends State<ProfilePage>
     final subtitleColor = AppThemeColors.subtitleColor(context);
     final fillColor = AppThemeColors.inputFill(context);
 
-    final displayName = _name.trim().isNotEmpty ? _name.trim() : 'Sin nombre';
+    final displayName = _displayName();
     final displayEmail =
     _email.trim().isNotEmpty ? _email.trim() : 'Sin correo';
     final initials = _buildInitials(
@@ -207,16 +247,47 @@ class _ProfilePageState extends State<ProfilePage>
         child: SafeArea(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
+              : _errorMessage != null
+              ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 52,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: subtitleColor,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: _loadProfile,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            ),
+          )
               : FadeTransition(
             opacity: _fadeAnimation,
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: fillColor,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.06),
@@ -225,86 +296,88 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color:
-                          AppColors.blueNeon.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          initials,
-                          style: TextStyle(
-                            color: AppColors.blueNeon,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.blueNeon
+                                  .withValues(alpha: 0.18),
+                              borderRadius:
+                              BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              initials,
                               style: TextStyle(
-                                color: titleColor,
-                                fontSize: 17,
+                                color: AppColors.blueNeon,
+                                fontSize: 20,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              displayEmail,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: subtitleColor,
-                                fontSize: 13,
-                              ),
-                            ),
-                            if (_userId.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'ID: ${_userId.length > 10 ? '${_userId.substring(0, 10)}…' : _userId}',
-                                style: TextStyle(
-                                  color: subtitleColor,
-                                  fontSize: 12,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: titleColor,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ],
-                        ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  displayEmail,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: subtitleColor,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _InfoChip(
+                                      icon: Icons.info_outline,
+                                      label: 'Build ${AppInfo.appVersion}',
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      FilledButton.tonal(
-                        onPressed: _openEditProfile,
-                        child: const Text('Editar'),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonal(
+                              onPressed: _openEditProfile,
+                              child: const Text('Editar perfil'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 Text(
-                  'Cuenta',
+                  'Información de cuenta',
                   style: TextStyle(
                     color: titleColor,
                     fontSize: 16,
@@ -312,6 +385,74 @@ class _ProfilePageState extends State<ProfilePage>
                   ),
                 ),
                 const SizedBox(height: 10),
+                _ProfileInfoCard(
+                  fillColor: fillColor,
+                  titleColor: titleColor,
+                  subtitleColor: subtitleColor,
+                  items: [
+                    _ProfileInfoItem(
+                      icon: Icons.email_outlined,
+                      title: 'Correo',
+                      value: displayEmail,
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.update_outlined,
+                      title: 'Última actualización',
+                      value: _formatDate(_updatedAt),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Identificador',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: fillColor,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'ID de usuario',
+                              style: TextStyle(
+                                color: titleColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _userId.isEmpty ? 'No disponible' : _userId,
+                              style: TextStyle(
+                                color: subtitleColor,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _userId.isEmpty ? null : _copyUserId,
+                        icon: const Icon(Icons.copy_rounded),
+                        tooltip: 'Copiar ID',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
                 _ProfileTile(
                   icon: Icons.settings_outlined,
                   title: 'Ajustes',
@@ -329,13 +470,6 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     );
                   },
-                ),
-                const SizedBox(height: 12),
-                _VersionCard(
-                  version: AppInfo.appVersion,
-                  fillColor: fillColor,
-                  titleColor: titleColor,
-                  subtitleColor: subtitleColor,
                 ),
                 const SizedBox(height: 28),
                 SizedBox(
@@ -359,6 +493,104 @@ class _ProfilePageState extends State<ProfilePage>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitleColor = AppThemeColors.subtitleColor(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: subtitleColor),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: subtitleColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileInfoItem {
+  const _ProfileInfoItem({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+}
+
+class _ProfileInfoCard extends StatelessWidget {
+  const _ProfileInfoCard({
+    required this.fillColor,
+    required this.titleColor,
+    required this.subtitleColor,
+    required this.items,
+  });
+
+  final Color fillColor;
+  final Color titleColor;
+  final Color subtitleColor;
+  final List<_ProfileInfoItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: fillColor,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            ListTile(
+              leading: Icon(items[i].icon),
+              title: Text(
+                items[i].title,
+                style: TextStyle(
+                  color: titleColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              subtitle: Text(
+                items[i].value,
+                style: TextStyle(color: subtitleColor),
+              ),
+            ),
+            if (i != items.length - 1) const Divider(height: 1),
+          ],
+        ],
       ),
     );
   }
@@ -429,64 +661,6 @@ class _ProfileTile extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _VersionCard extends StatelessWidget {
-  const _VersionCard({
-    required this.version,
-    required this.fillColor,
-    required this.titleColor,
-    required this.subtitleColor,
-  });
-
-  final String version;
-  final Color fillColor;
-  final Color titleColor;
-  final Color subtitleColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        color: fillColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: AppColors.orangeBright,
-            size: 26,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Versión de la app',
-                  style: TextStyle(
-                    color: titleColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Build $version',
-                  style: TextStyle(
-                    color: subtitleColor,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

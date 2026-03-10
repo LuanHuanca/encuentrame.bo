@@ -4,11 +4,14 @@ const stalls = require('./routes/stalls');
 const users = require('./routes/users');
 const products = require('./routes/products');
 const market = require('./routes/market');
-const { ok, bad, options } = require('./util/http');
+const { bad, options, ok } = require('./util/http');
 const { getCaller } = require('./util/auth');
 
 function pathParts(path) {
-  return (path || '').split('?')[0].split('/').filter(Boolean);
+  return (path || '')
+    .split('?')[0]
+    .split('/')
+    .filter(Boolean);
 }
 
 function stripApiPrefix(parts) {
@@ -30,14 +33,17 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /users/me
   if (parts[0] === 'users' && parts[1] === 'me' && parts.length === 2) {
     if (method === 'GET') return users.me({ caller, event });
     if (method === 'PUT') return users.updateMe({ caller, event });
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /market/open-stalls
+  if (parts[0] === 'market' && parts[1] === 'categories' && parts.length === 2) {
+    if (method === 'GET') return market.listCategories({ caller, event });
+    return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
+  }
+
   if (
     parts[0] === 'market' &&
     parts[1] === 'open-stalls' &&
@@ -47,7 +53,17 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /market/products/search
+  if (parts[0] === 'market' && parts[1] === 'stalls' && parts[2] && parts.length === 3) {
+    if (method === 'GET') {
+      return market.getStallPublicDetail({
+        stallId: parts[2],
+        event,
+        caller,
+      });
+    }
+    return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
+  }
+
   if (
     parts[0] === 'market' &&
     parts[1] === 'products' &&
@@ -58,7 +74,6 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /market/stalls/{stallId}/products
   if (
     parts[0] === 'market' &&
     parts[1] === 'stalls' &&
@@ -76,39 +91,33 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls
   if (parts[0] === 'stalls' && parts.length === 1) {
     if (method === 'GET') return stalls.list({ caller, event });
     if (method === 'POST') return stalls.create({ caller, event });
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/my
   if (parts[0] === 'stalls' && parts[1] === 'my' && parts.length === 2) {
     if (method === 'GET') return stalls.getMy({ caller, event });
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/open
   if (parts[0] === 'stalls' && parts[1] === 'open' && parts.length === 2) {
     if (method === 'POST') return stalls.open({ caller, event });
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}/products
   if (
     parts[0] === 'stalls' &&
     parts[1] &&
     parts[2] === 'products' &&
     parts.length === 3
   ) {
-    if (method === 'GET') {
-      return products.list({ stallId: parts[1], caller, event });
-    }
+    if (method === 'GET') return products.list({ stallId: parts[1], caller, event });
+    if (method === 'POST') return products.create({ stallId: parts[1], caller, event });
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}/products/{productId}
   if (
     parts[0] === 'stalls' &&
     parts[1] &&
@@ -124,10 +133,18 @@ async function route(event) {
         event,
       });
     }
+
+    if (method === 'DELETE') {
+      return products.remove({
+        stallId: parts[1],
+        productId: parts[3],
+        caller,
+      });
+    }
+
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}
   if (parts[0] === 'stalls' && parts[1] && parts.length === 2) {
     const stallId = parts[1];
     if (method === 'GET') return stalls.get({ stallId, caller, event });
@@ -136,7 +153,6 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}/current
   if (
     parts[0] === 'stalls' &&
     parts[1] &&
@@ -149,7 +165,6 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}/close
   if (
     parts[0] === 'stalls' &&
     parts[1] &&
@@ -162,7 +177,6 @@ async function route(event) {
     return bad(405, 'METHOD_NOT_ALLOWED', 'Método no permitido');
   }
 
-  // /stalls/{stallId}/openings
   if (
     parts[0] === 'stalls' &&
     parts[1] &&

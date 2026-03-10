@@ -1,512 +1,216 @@
 'use strict';
 
 const crypto = require('crypto');
-const { ok, bad } = require('../util/http');
 
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const config = require('../config');
+const { ok, bad, parseJsonBody } = require('../util/http');
+const { getUserId } = require('../util/auth');
+const { ddb, rekognition } = require('../services/aws');
+const { reverseGeocode } = require('../services/location');
 const {
-  DynamoDBDocumentClient,
+  fallbackInventoryParse,
+  bedrockInventory,
+  reconcileInventory,
+} = require('../services/inventory');
+
+const {
+  GetCommand,
   PutCommand,
   UpdateCommand,
-  GetCommand,
-  QueryCommand,
   DeleteCommand,
-  BatchGetCommand
+  QueryCommand,
+  BatchGetCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
 const {
-  RekognitionClient,
   DetectLabelsCommand,
-  DetectModerationLabelsCommand
+  DetectModerationLabelsCommand,
 } = require('@aws-sdk/client-rekognition');
-
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
-const { LocationClient, SearchPlaceIndexForPositionCommand } = require('@aws-sdk/client-location');
-
-const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
-const BUCKET_NAME = process.env.BUCKET_NAME;
-const STALLS_TABLE = process.env.STALLS_TABLE;
-const OPENINGLOGS_TABLE = process.env.OPENINGLOGS_TABLE;
-const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
-const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || '';
-const LOCATION_PLACE_INDEX_NAME = process.env.LOCATION_PLACE_INDEX_NAME || '';
-
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
-  marshallOptions: { removeUndefinedValues: true }
-});
-const rek = new RekognitionClient({ region: REGION });
-const bedrock = new BedrockRuntimeClient({ region: REGION });
-const location = new LocationClient({ region: REGION });
-
-function jsonBody(event) {
-  try {
-    return event.body ? JSON.parse(event.body) : {};
-  } catch {
-    return {};
-  }
-}
 
 function nowIso() {
   return new Date().toISOString();
 }
 
 function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
 }
 
-function callerId(caller) {
-  return (
-    caller?.sub ||
-    caller?.userId ||
-    caller?.identityId ||
-    caller?.cognitoIdentityId ||
-    caller?._identity?.cognitoIdentityId ||
-    null
-  );
+function pkUser(userId) {
+  return `USER#${userId}`;
 }
 
-function pkStall(stallId) { return `STALL#${stallId}`; }
-function pkUser(userId) { return `USER#${userId}`; }
-function skStall(stallId) { return `STALL#${stallId}`; }
-function skProd(productId) { return `PROD#${productId}`; }
+function pkStall(stallId) {
+  return `STALL#${stallId}`;
+}
+
+function skStall(stallId) {
+  return `STALL#${stallId}`;
+}
+
+function skProd(productId) {
+  return `PROD#${productId}`;
+}
 
 async function assertOwnsStall(userId, stallId) {
-  const res = await ddb.send(new GetCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkUser(userId), sk: skStall(stallId) }
-  }));
-  return !!res.Item;
+  if (!config.STALLS_TABLE) return false;
+
+  const response = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkUser(userId), sk: skStall(stallId) },
+    })
+  );
+
+  return !!response.Item;
 }
 
 async function findFirstOwnedStall(userId) {
-  const result = await ddb.send(new QueryCommand({
-    TableName: STALLS_TABLE,
-    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
-    ExpressionAttributeValues: {
-      ':pk': pkUser(userId),
-      ':pfx': 'STALL#'
-    },
-    ScanIndexForward: true,
-    Limit: 1
-  }));
+  if (!config.STALLS_TABLE) return null;
 
-  return (result.Items && result.Items[0]) ? result.Items[0] : null;
+  const response = await ddb.send(
+    new QueryCommand({
+      TableName: config.STALLS_TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: {
+        ':pk': pkUser(userId),
+        ':prefix': 'STALL#',
+      },
+      ScanIndexForward: true,
+      Limit: 1,
+    })
+  );
+
+  return response.Items?.[0] || null;
 }
 
-function normalizeS3Key(k) {
-  let key = String(k || '').trim();
+function normalizeS3Key(value) {
+  let key = String(value || '').trim();
   if (!key) return key;
   if (key.startsWith('/')) key = key.slice(1);
   key = key.replace(/\/{2,}/g, '/');
-  if (key.startsWith('public/public/')) key = key.replace('public/public/', 'public/');
+  if (key.startsWith('public/public/')) {
+    key = key.replace('public/public/', 'public/');
+  }
   return key;
 }
 
-function candidateKeys(k) {
-  const key = normalizeS3Key(k);
-  const out = [];
-  const push = (x) => { if (x && !out.includes(x)) out.push(x); };
+function candidateKeys(value) {
+  const key = normalizeS3Key(value);
+  const keys = [];
+
+  const push = (item) => {
+    if (item && !keys.includes(item)) keys.push(item);
+  };
 
   push(key);
-  if (key && !key.startsWith('public/')) push(`public/${key}`);
-  if (key && key.startsWith('public/')) push(`public/public/${key.slice('public/'.length)}`);
-  if (key && key.startsWith('public/public/')) push(key.replace('public/public/', 'public/'));
 
-  return out.slice(0, 4);
+  if (key && !key.startsWith('public/')) {
+    push(`public/${key}`);
+  }
+
+  if (key && key.startsWith('public/')) {
+    push(`public/public/${key.slice('public/'.length)}`);
+  }
+
+  if (key && key.startsWith('public/public/')) {
+    push(key.replace('public/public/', 'public/'));
+  }
+
+  return keys.slice(0, 4);
 }
 
-function isResourceNotFound(e) {
-  return e?.name === 'ResourceNotFoundException' || e?.$metadata?.httpStatusCode === 404;
+function isResourceNotFound(error) {
+  return (
+    error?.name === 'ResourceNotFoundException' ||
+    error?.$metadata?.httpStatusCode === 404
+  );
 }
 
-function awsDetails(e) {
-  return { name: e?.name, message: e?.message, status: e?.$metadata?.httpStatusCode };
+function awsDetails(error) {
+  return {
+    name: error?.name,
+    message: error?.message,
+    status: error?.$metadata?.httpStatusCode,
+  };
 }
 
 async function detectProductsLabelsWithKey(productsPhotoKey) {
-  const tries = candidateKeys(productsPhotoKey);
-  let lastErr;
+  const keys = candidateKeys(productsPhotoKey);
+  let lastError;
 
-  for (const k of tries) {
+  for (const key of keys) {
     try {
-      const out = await rek.send(new DetectLabelsCommand({
-        Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
-        MaxLabels: 20,
-        MinConfidence: 80
+      const output = await rekognition.send(
+        new DetectLabelsCommand({
+          Image: {
+            S3Object: {
+              Bucket: config.BUCKET_NAME,
+              Name: key,
+            },
+          },
+          MaxLabels: 20,
+          MinConfidence: 80,
+        })
+      );
+
+      const labels = (output.Labels || []).map((item) => ({
+        name: item.Name,
+        confidence: Math.round((item.Confidence || 0) * 10) / 10,
       }));
 
-      const labels = (out.Labels || []).map(l => ({
-        name: l.Name,
-        confidence: Math.round((l.Confidence || 0) * 10) / 10
-      }));
-
-      return { labels, keyUsed: k };
-    } catch (e) {
-      lastErr = e;
-      if (isResourceNotFound(e)) continue;
-      throw e;
+      return { labels, keyUsed: key };
+    } catch (error) {
+      lastError = error;
+      if (isResourceNotFound(error)) continue;
+      throw error;
     }
   }
 
-  throw lastErr;
+  throw lastError;
 }
 
 async function detectModerationWithKey(stallPhotoKey) {
-  const tries = candidateKeys(stallPhotoKey);
-  let lastErr;
+  const keys = candidateKeys(stallPhotoKey);
+  let lastError;
 
-  for (const k of tries) {
+  for (const key of keys) {
     try {
-      const out = await rek.send(new DetectModerationLabelsCommand({
-        Image: { S3Object: { Bucket: BUCKET_NAME, Name: k } },
-        MinConfidence: 75
+      const output = await rekognition.send(
+        new DetectModerationLabelsCommand({
+          Image: {
+            S3Object: {
+              Bucket: config.BUCKET_NAME,
+              Name: key,
+            },
+          },
+          MinConfidence: 75,
+        })
+      );
+
+      const moderation = (output.ModerationLabels || []).map((item) => ({
+        name: item.Name,
+        confidence: Math.round((item.Confidence || 0) * 10) / 10,
       }));
 
-      const moderation = (out.ModerationLabels || []).map(l => ({
-        name: l.Name,
-        confidence: Math.round((l.Confidence || 0) * 10) / 10
-      }));
-
-      return { moderation, keyUsed: k };
-    } catch (e) {
-      lastErr = e;
-      if (isResourceNotFound(e)) continue;
-      throw e;
+      return { moderation, keyUsed: key };
+    } catch (error) {
+      lastError = error;
+      if (isResourceNotFound(error)) continue;
+      throw error;
     }
   }
 
-  throw lastErr;
-}
-
-async function reverseGeocode(lat, lng) {
-  if (!LOCATION_PLACE_INDEX_NAME) return null;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  try {
-    const out = await location.send(new SearchPlaceIndexForPositionCommand({
-      IndexName: LOCATION_PLACE_INDEX_NAME,
-      Position: [lng, lat],
-      MaxResults: 1
-    }));
-
-    const place = out?.Results?.[0]?.Place || null;
-    if (!place) return null;
-
-    const address = {
-      label: place.Label || null,
-      street: place.Street || null,
-      neighborhood: place.Neighborhood || null,
-      municipality: place.Municipality || null,
-      subRegion: place.SubRegion || null,
-      region: place.Region || null,
-      country: place.Country || null,
-      postalCode: place.PostalCode || null
-    };
-
-    return { label: place.Label || null, address };
-  } catch (e) {
-    console.log('LOCATION_ERROR', awsDetails(e));
-    return null;
-  }
-}
-
-const VISION_STOP_LABELS = new Set([
-  'Person','Human','Face','Man','Woman','Kid','Child','People','Adult','Smile','Head','Hand','Finger'
-]);
-
-const VISION_GENERIC = new Set([
-  'Product','Products','Object','Indoors','Room','Floor','Table','Furniture','Clothing'
-]);
-
-const CANON_MAP = [
-  ['tomatodo', 'botella'],
-  ['termo', 'botella'],
-  ['camiseta', 'polera'],
-  ['camisetas', 'polera'],
-  ['poleras', 'polera'],
-  ['lentes', 'gafas de sol'],
-  ['lentes de sol', 'gafas de sol'],
-  ['gafas', 'gafas de sol'],
-  ['zapatos', 'zapato'],
-  ['botas', 'bota']
-];
-
-function normalizeCanonical(s) {
-  const x = (s || '').toLowerCase().trim();
-  if (!x) return '';
-  for (const [a, b] of CANON_MAP) {
-    if (x === a) return b;
-  }
-  return x;
-}
-
-function isNonProduct(canonical) {
-  const x = (canonical || '').toLowerCase();
-  return ['hombre','mujer','persona','personas','gente','niño','niña','adulto','adultos'].includes(x);
-}
-
-function spanishWordToNumber(word) {
-  const w = (word || '').toLowerCase().trim();
-  const map = {
-    'un': 1, 'una': 1, 'uno': 1,
-    'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
-    'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9,
-    'diez': 10, 'once': 11, 'doce': 12, 'trece': 13, 'catorce': 14, 'quince': 15,
-    'dieciseis': 16, 'dieciséis': 16, 'diecisiete': 17, 'dieciocho': 18, 'diecinueve': 19, 'veinte': 20
-  };
-  return map[w] ?? null;
-}
-
-function parseLooseInventory(raw) {
-  const text = String(raw || '')
-    .replace(/\s+/g, ' ')
-    .replace(/\s+y\s+/gi, ', ')
-    .replace(/\s+e\s+/gi, ', ')
-    .trim();
-
-  if (!text) return [];
-
-  const parts = text.split(',').map(x => x.trim()).filter(Boolean);
-  const items = [];
-
-  for (const p of parts) {
-    const m1 = p.match(/^(\d+)\s+(.*)$/);
-    if (m1) {
-      items.push({ canonical: m1[2].trim(), display: m1[2].trim(), qty: Number(m1[1]) });
-      continue;
-    }
-
-    const m2 = p.match(/^([a-záéíóúñ]+)\s+(.*)$/i);
-    if (m2) {
-      const n = spanishWordToNumber(m2[1]);
-      if (n != null) {
-        const name = m2[2].trim();
-        if (name) items.push({ canonical: name, display: name, qty: n });
-        continue;
-      }
-    }
-
-    items.push({ canonical: p, display: p, qty: 1 });
-  }
-
-  return items;
-}
-
-function fallbackInventoryParse(raw) {
-  const items = parseLooseInventory(raw).map(it => ({
-    canonical: it.canonical,
-    display: it.display,
-    qty: it.qty,
-    unit: 'unidad',
-    category: null,
-    tags: [],
-    suggested: false
-  }));
-  return { items };
-}
-
-function extractJson(text) {
-  if (!text) return null;
-  const s = text.indexOf('{');
-  const e = text.lastIndexOf('}');
-  if (s !== -1 && e !== -1 && e > s) return text.substring(s, e + 1);
-  return null;
-}
-
-function sanitizeInventoryItems(items) {
-  const out = [];
-  const seen = new Map();
-
-  for (const it of (items || [])) {
-    const canonical = normalizeCanonical(it?.canonical || it?.name || it?.display || '');
-    if (!canonical || isNonProduct(canonical)) continue;
-
-    let qty = Number(it?.qty ?? 1);
-    if (!Number.isFinite(qty) || qty <= 0) qty = 1;
-    qty = Math.round(qty);
-
-    const display = String(it?.display || canonical).trim() || canonical;
-
-    const obj = {
-      canonical,
-      display,
-      qty,
-      unit: it?.unit ?? 'unidad',
-      category: it?.category ?? null,
-      tags: Array.isArray(it?.tags) ? it.tags : [],
-      suggested: !!it?.suggested
-    };
-
-    if (!seen.has(canonical)) {
-      seen.set(canonical, out.length);
-      out.push(obj);
-    } else {
-      const idx = seen.get(canonical);
-      out[idx].qty += obj.qty;
-    }
-  }
-
-  return out;
-}
-
-async function bedrockInventory(rawText, labels) {
-  if (!BEDROCK_MODEL_ID) return null;
-
-  const prompt =
-`Eres un extractor de inventario. La app convertirá tu respuesta en una tabla (Producto + Cantidad).
-
-TAREA:
-- Lee el texto en español y conviértelo en ITEMS separados.
-- Si el texto dice "10 zapatos, una polera y una botella", deben salir 3 filas:
-  - zapato qty 10
-  - polera qty 1
-  - botella qty 1
-
-REGLAS CRÍTICAS:
-- Devuelve SOLO JSON válido. Sin texto extra. Sin markdown. Sin explicación.
-- Devuelve items SOLO desde el texto. NO inventes items por Rekognition.
-- Si no hay cantidad, asume 1.
-- Normaliza nombres (obligatorio):
-  - "tomatodo" o "termo" -> "botella"
-  - "camiseta" o "poleras" -> "polera"
-  - "botas" -> "bota"
-  - "zapatos" -> "zapato"
-- Fusiona duplicados (si se repiten, suma cantidades).
-- Ignora "persona/hombre/mujer/niño" como producto.
-
-FORMATO ESTRICTO:
-{
-  "items": [
-    { "canonical": "string", "display": "string", "qty": number }
-  ]
-}
-
-Texto:
-"""${rawText}"""
-
-Labels (solo referencia, NO para crear items):
-${JSON.stringify(labels || [])}
-`;
-
-  const isTitan = BEDROCK_MODEL_ID.startsWith('amazon.');
-
-  const body = isTitan
-    ? JSON.stringify({
-        inputText: prompt,
-        textGenerationConfig: { maxTokenCount: 700, temperature: 0, topP: 1 }
-      })
-    : JSON.stringify({
-        anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 700,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-  const res = await bedrock.send(new InvokeModelCommand({
-    modelId: BEDROCK_MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body
-  }));
-
-  const raw = Buffer.from(res.body).toString('utf8');
-  const parsed = JSON.parse(raw);
-
-  const outText = isTitan
-    ? (parsed?.results?.[0]?.outputText || '')
-    : (parsed?.content?.[0]?.text || '');
-
-  const jsonStr = extractJson(outText);
-  if (!jsonStr) return null;
-
-  try {
-    const obj = JSON.parse(jsonStr);
-    if (obj && Array.isArray(obj.items)) {
-      obj.items = sanitizeInventoryItems(obj.items);
-      return obj;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function labelMatchesItem(canonical, labels) {
-  const name = canonical.toLowerCase();
-  const filtered = (labels || [])
-    .filter(l => l?.name && !VISION_STOP_LABELS.has(l.name) && !VISION_GENERIC.has(l.name))
-    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-
-  const matched = [];
-
-  for (const l of filtered) {
-    const ln = String(l.name || '').toLowerCase();
-    if (!ln) continue;
-    if (name.includes(ln) || ln.includes(name)) matched.push(l.name);
-    if (matched.length >= 2) break;
-  }
-
-  return [...new Set(matched)];
-}
-
-function reconcileInventory(itemsFromText, labels) {
-  const items = [];
-  const seen = new Map();
-
-  const cleanTextItems = sanitizeInventoryItems(itemsFromText || []);
-  const cleanLabels = (labels || [])
-    .filter(l => l?.name && !VISION_STOP_LABELS.has(l.name) && !VISION_GENERIC.has(l.name))
-    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-
-  for (const it of cleanTextItems) {
-    const matched = labelMatchesItem(it.canonical, cleanLabels);
-
-    const obj = {
-      canonical: it.canonical,
-      display: it.display,
-      qty: it.qty,
-      unit: it.unit ?? 'unidad',
-      category: it.category ?? (matched[0] ?? null),
-      tags: it.tags ?? [],
-      evidence: { text: true, vision: matched.slice(0, 2) },
-      confidence: matched.length ? 0.92 : 0.82,
-      suggested: false
-    };
-
-    if (!seen.has(obj.canonical)) {
-      seen.set(obj.canonical, items.length);
-      items.push(obj);
-    } else {
-      const idx = seen.get(obj.canonical);
-      items[idx].qty += obj.qty;
-    }
-  }
-
-  const suggestions = [];
-  const used = new Set(items.flatMap(x => (x.evidence?.vision || [])).filter(Boolean));
-
-  for (const l of cleanLabels) {
-    if (!l?.name) continue;
-    if (used.has(l.name)) continue;
-    if ((l.confidence || 0) < 88) continue;
-
-    suggestions.push({
-      label: l.name,
-      confidence: Math.min(0.7, Math.max(0.55, (l.confidence || 0) / 100)),
-    });
-
-    if (suggestions.length >= 6) break;
-  }
-
-  return { items, suggestions };
+  throw lastError;
 }
 
 async function upsertProductsFromInventory({ stallId, items, now }) {
-  if (!PRODUCTS_TABLE) return;
+  if (!config.PRODUCTS_TABLE) return;
   if (!items || !items.length) return;
 
-  const slug = (s) =>
-    String(s || '')
+  const slug = (value) =>
+    String(value || '')
       .toLowerCase()
       .trim()
       .normalize('NFD')
@@ -515,92 +219,127 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
       .replace(/[^a-z0-9\-]/g, '')
       .slice(0, 64);
 
-  for (const it of items) {
-    const productId = slug(it.canonical);
+  for (const item of items) {
+    const productId = slug(item.canonical);
     if (!productId) continue;
 
-    await ddb.send(new UpdateCommand({
-      TableName: PRODUCTS_TABLE,
-      Key: { pk: pkStall(stallId), sk: skProd(productId) },
-      UpdateExpression: `
-        SET entityType = if_not_exists(entityType, :type),
-            productId = if_not_exists(productId, :pid),
-            canonical = if_not_exists(canonical, :canon),
-            #display = if_not_exists(#display, :display),
-            category = if_not_exists(category, :cat),
-            tags = if_not_exists(tags, :tags),
-            active = if_not_exists(active, :active),
-            lastQty = :lastQty,
-            lastSeenAt = :lastSeenAt
-      `,
-      ExpressionAttributeNames: { '#display': 'display' },
-      ExpressionAttributeValues: {
-        ':type': 'PRODUCT',
-        ':pid': productId,
-        ':canon': it.canonical,
-        ':display': it.display || it.canonical,
-        ':cat': it.category ?? null,
-        ':tags': it.tags ?? [],
-        ':active': true,
-        ':lastQty': it.qty ?? 1,
-        ':lastSeenAt': now
-      }
-    }));
+    await ddb.send(
+      new UpdateCommand({
+        TableName: config.PRODUCTS_TABLE,
+        Key: { pk: pkStall(stallId), sk: skProd(productId) },
+        UpdateExpression: `
+          SET entityType = if_not_exists(entityType, :type),
+              productId = if_not_exists(productId, :pid),
+              canonical = if_not_exists(canonical, :canonical),
+              #display = if_not_exists(#display, :display),
+              category = if_not_exists(category, :category),
+              description = if_not_exists(description, :description),
+              tags = if_not_exists(tags, :tags),
+              active = if_not_exists(active, :active),
+              lastQty = :lastQty,
+              lastSeenAt = :lastSeenAt
+        `,
+        ExpressionAttributeNames: {
+          '#display': 'display',
+        },
+        ExpressionAttributeValues: {
+          ':type': 'PRODUCT',
+          ':pid': productId,
+          ':canonical': item.canonical,
+          ':display': item.display || item.canonical,
+          ':category': item.category ?? null,
+          ':description': null,
+          ':tags': item.tags ?? [],
+          ':active': true,
+          ':lastQty': item.qty ?? 1,
+          ':lastSeenAt': now,
+        },
+      })
+    );
   }
 }
 
 async function list({ caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.STALLS_TABLE) return ok({ stalls: [] });
 
-  const q = await ddb.send(new QueryCommand({
-    TableName: STALLS_TABLE,
-    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
-    ExpressionAttributeValues: { ':pk': pkUser(userId), ':pfx': 'STALL#' },
-    ScanIndexForward: true
-  }));
+  const linksResponse = await ddb.send(
+    new QueryCommand({
+      TableName: config.STALLS_TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: {
+        ':pk': pkUser(userId),
+        ':prefix': 'STALL#',
+      },
+      ScanIndexForward: true,
+    })
+  );
 
-  const links = (q.Items || []).map(x => ({
-    stallId: x.stallId,
-    name: x.name,
-    active: x.active ?? true,
-    createdAt: x.createdAt
+  const links = (linksResponse.Items || []).map((item) => ({
+    stallId: item.stallId,
+    name: item.name,
+    category: item.category ?? null,
+    description: item.description ?? null,
+    active: item.active ?? true,
+    createdAt: item.createdAt,
   }));
 
   if (!links.length) return ok({ stalls: [] });
 
-  const keys = links.map(s => ({ pk: pkStall(s.stallId), sk: 'PROFILE' }));
+  const keys = links.map((stall) => ({
+    pk: pkStall(stall.stallId),
+    sk: 'PROFILE',
+  }));
 
-  let requestItems = { [STALLS_TABLE]: { Keys: keys } };
+  let requestItems = {
+    [config.STALLS_TABLE]: {
+      Keys: keys,
+    },
+  };
+
   const profiles = [];
 
-  for (let i = 0; i < 3; i++) {
-    const bg = await ddb.send(new BatchGetCommand({ RequestItems: requestItems }));
-    profiles.push(...(bg.Responses?.[STALLS_TABLE] || []));
+  for (let i = 0; i < 3; i += 1) {
+    const batch = await ddb.send(
+      new BatchGetCommand({
+        RequestItems: requestItems,
+      })
+    );
 
-    const unprocessed = bg.UnprocessedKeys || {};
-    if (!unprocessed[STALLS_TABLE] || !unprocessed[STALLS_TABLE].Keys?.length) break;
+    profiles.push(...(batch.Responses?.[config.STALLS_TABLE] || []));
+
+    const unprocessed = batch.UnprocessedKeys || {};
+    if (
+      !unprocessed[config.STALLS_TABLE] ||
+      !unprocessed[config.STALLS_TABLE].Keys?.length
+    ) {
+      break;
+    }
 
     requestItems = unprocessed;
   }
 
-  const profMap = profiles.reduce((acc, it) => {
-    if (it?.stallId) acc[it.stallId] = it;
+  const profileMap = profiles.reduce((acc, item) => {
+    if (item?.stallId) acc[item.stallId] = item;
     return acc;
   }, {});
 
-  const stalls = links.map(s => {
-    const prof = profMap[s.stallId];
-    const currentOpen = prof?.currentOpen || null;
+  const stalls = links.map((stall) => {
+    const profile = profileMap[stall.stallId];
+    const currentOpen = profile?.currentOpen || null;
 
     return {
-      ...s,
+      ...stall,
+      name: profile?.name ?? stall.name,
+      category: profile?.category ?? stall.category ?? null,
+      description: profile?.description ?? stall.description ?? null,
       currentOpen,
       isOpen: !!currentOpen,
-      currentLat: prof?.currentLat ?? null,
-      currentLng: prof?.currentLng ?? null,
-      currentAddressLabel: prof?.currentAddressLabel ?? null,
-      updatedAt: prof?.updatedAt ?? null
+      currentLat: profile?.currentLat ?? null,
+      currentLng: profile?.currentLng ?? null,
+      currentAddressLabel: profile?.currentAddressLabel ?? null,
+      updatedAt: profile?.updatedAt ?? null,
     };
   });
 
@@ -608,150 +347,247 @@ async function list({ caller }) {
 }
 
 async function create({ event, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
-  if (!STALLS_TABLE) return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
+  if (!config.STALLS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
+  }
 
   const existingStall = await findFirstOwnedStall(userId);
   if (existingStall) {
     return bad(409, 'STALL_ALREADY_EXISTS', 'Ya tienes un puesto creado');
   }
 
-  const body = jsonBody(event);
+  const body = parseJsonBody(event);
+
   const name = String(body.name || '').trim();
+  const category = String(body.category || '').trim() || null;
+  const description = String(body.description || '').trim() || null;
+
   if (!name) return bad(400, 'VALIDATION', 'Nombre requerido');
 
   const stallId = `stall_${uuid()}`;
   const now = nowIso();
 
-  await ddb.send(new PutCommand({
-    TableName: STALLS_TABLE,
-    Item: {
-      pk: pkStall(stallId),
-      sk: 'PROFILE',
-      entityType: 'STALL',
-      stallId,
-      vendorUserId: userId,
-      name,
-      active: true,
-      createdAt: now,
-      updatedAt: now,
-      currentOpen: null,
-      currentLat: null,
-      currentLng: null,
-      currentAddressLabel: null,
-      currentAddress: null
-    }
-  }));
+  await ddb.send(
+    new PutCommand({
+      TableName: config.STALLS_TABLE,
+      Item: {
+        pk: pkStall(stallId),
+        sk: 'PROFILE',
+        entityType: 'STALL',
+        stallId,
+        vendorUserId: userId,
+        name,
+        category,
+        description,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+        currentOpen: null,
+        currentLat: null,
+        currentLng: null,
+        currentAddressLabel: null,
+        currentAddress: null,
+      },
+    })
+  );
 
-  await ddb.send(new PutCommand({
-    TableName: STALLS_TABLE,
-    Item: {
-      pk: pkUser(userId),
-      sk: skStall(stallId),
-      entityType: 'USER_STALL',
-      stallId,
-      name,
-      active: true,
-      createdAt: now
-    }
-  }));
+  await ddb.send(
+    new PutCommand({
+      TableName: config.STALLS_TABLE,
+      Item: {
+        pk: pkUser(userId),
+        sk: skStall(stallId),
+        entityType: 'USER_STALL',
+        stallId,
+        name,
+        category,
+        description,
+        active: true,
+        createdAt: now,
+      },
+    })
+  );
 
-  return ok({ stallId, name });
+  return ok({
+    stallId,
+    name,
+    category,
+    description,
+  });
 }
 
 async function get({ stallId, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const res = await ddb.send(new GetCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' }
-  }));
+  const response = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
 
-  return ok({ stall: res.Item || null });
+  return ok({ stall: response.Item || null });
 }
 
 async function update({ stallId, event, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.STALLS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
+  }
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const body = jsonBody(event);
-  const name = String(body.name || '').trim();
-  if (!name) return bad(400, 'VALIDATION', 'Nombre requerido');
+  const body = parseJsonBody(event);
 
-  const now = nowIso();
+  const name = body.name != null ? String(body.name).trim() : null;
+  const category =
+    body.category != null ? String(body.category).trim() || null : null;
+  const description =
+    body.description != null ? String(body.description).trim() || null : null;
 
-  await ddb.send(new UpdateCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' },
-    UpdateExpression: 'SET #name=:n, updatedAt=:u',
-    ExpressionAttributeNames: { '#name': 'name' },
-    ExpressionAttributeValues: { ':n': name, ':u': now }
-  }));
+  if (name !== null) {
+    if (!name) return bad(400, 'VALIDATION', 'Nombre requerido');
+    if (name.length < 2) {
+      return bad(400, 'VALIDATION', 'Nombre demasiado corto');
+    }
+    if (name.length > 60) {
+      return bad(400, 'VALIDATION', 'Máximo 60 caracteres');
+    }
+  }
 
-  await ddb.send(new UpdateCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkUser(userId), sk: skStall(stallId) },
-    UpdateExpression: 'SET #name=:n',
-    ExpressionAttributeNames: { '#name': 'name' },
-    ExpressionAttributeValues: { ':n': name }
-  }));
+  const profileSets = ['updatedAt = :updatedAt'];
+  const profileNames = {};
+  const profileValues = {
+    ':updatedAt': nowIso(),
+  };
+
+  const linkSets = [];
+  const linkNames = {};
+  const linkValues = {};
+
+  if (name !== null) {
+    profileNames['#name'] = 'name';
+    profileValues[':name'] = name;
+    profileSets.push('#name = :name');
+
+    linkNames['#name'] = 'name';
+    linkValues[':name'] = name;
+    linkSets.push('#name = :name');
+  }
+
+  if (category !== null) {
+    profileValues[':category'] = category;
+    profileSets.push('category = :category');
+
+    linkValues[':category'] = category;
+    linkSets.push('category = :category');
+  }
+
+  if (description !== null) {
+    profileValues[':description'] = description;
+    profileSets.push('description = :description');
+
+    linkValues[':description'] = description;
+    linkSets.push('description = :description');
+  }
+
+  if (profileSets.length === 1) {
+    return bad(400, 'VALIDATION', 'Nada para actualizar');
+  }
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+      UpdateExpression: `SET ${profileSets.join(', ')}`,
+      ExpressionAttributeNames: Object.keys(profileNames).length
+        ? profileNames
+        : undefined,
+      ExpressionAttributeValues: profileValues,
+    })
+  );
+
+  if (linkSets.length) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: config.STALLS_TABLE,
+        Key: { pk: pkUser(userId), sk: skStall(stallId) },
+        UpdateExpression: `SET ${linkSets.join(', ')}`,
+        ExpressionAttributeNames: Object.keys(linkNames).length
+          ? linkNames
+          : undefined,
+        ExpressionAttributeValues: linkValues,
+      })
+    );
+  }
 
   return ok({ ok: true });
 }
 
 async function remove({ stallId, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.STALLS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
+  }
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const prof = await ddb.send(new GetCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' }
-  }));
+  const profileResponse = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
 
-  const stall = prof.Item || null;
+  const stall = profileResponse.Item || null;
   if (!stall) return bad(404, 'NOT_FOUND', 'Puesto no existe');
-  if (stall.currentOpen) return bad(400, 'STALL_OPEN', 'Cierra el puesto antes de eliminar');
+  if (stall.currentOpen) {
+    return bad(400, 'STALL_OPEN', 'Cierra el puesto antes de eliminar');
+  }
 
-  await ddb.send(new DeleteCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkUser(userId), sk: skStall(stallId) }
-  }));
+  await ddb.send(
+    new DeleteCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkUser(userId), sk: skStall(stallId) },
+    })
+  );
 
-  await ddb.send(new DeleteCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' }
-  }));
+  await ddb.send(
+    new DeleteCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
 
   return ok({ ok: true });
 }
 
 async function open({ event, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
-  if (!STALLS_TABLE || !OPENINGLOGS_TABLE || !BUCKET_NAME) {
+  if (
+    !config.STALLS_TABLE ||
+    !config.OPENINGLOGS_TABLE ||
+    !config.BUCKET_NAME
+  ) {
     return bad(500, 'ENV_MISSING', 'Faltan env vars (tables/bucket)');
   }
 
-  const body = jsonBody(event);
+  const body = parseJsonBody(event);
 
   const stallId = String(body.stallId || '').trim();
-  if (!stallId) return bad(400, 'VALIDATION', 'stallId requerido');
-
-  const owns = await assertOwnsStall(userId, stallId);
-  if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
-
+  const stallName = String(body.stallName || '').trim();
   const lat = Number(body.lat);
   const lng = Number(body.lng);
   const accuracy = Number(body.accuracy || 0);
@@ -760,9 +596,32 @@ async function open({ event, caller }) {
   let productsPhotoKey = normalizeS3Key(body.productsPhotoKey);
   const inventoryText = String(body.inventoryText || '').trim();
 
-  if (!stallPhotoKey || !productsPhotoKey) return bad(400, 'MISSING_PHOTOS', 'Faltan fotos');
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return bad(400, 'MISSING_LOCATION', 'Falta ubicación');
-  if (!inventoryText) return bad(400, 'MISSING_INVENTORY', 'Falta inventario');
+  if (!stallId) return bad(400, 'VALIDATION', 'stallId requerido');
+
+  const owns = await assertOwnsStall(userId, stallId);
+  if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
+
+  const profileResponse = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
+
+  const currentProfile = profileResponse.Item || null;
+  if (!currentProfile) return bad(404, 'NOT_FOUND', 'Puesto no existe');
+
+  if (!stallPhotoKey || !productsPhotoKey) {
+    return bad(400, 'MISSING_PHOTOS', 'Faltan fotos');
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return bad(400, 'MISSING_LOCATION', 'Falta ubicación');
+  }
+
+  if (!inventoryText) {
+    return bad(400, 'MISSING_INVENTORY', 'Falta inventario');
+  }
 
   const now = nowIso();
   const openSk = `OPEN#${now}#${uuid()}`;
@@ -773,102 +632,143 @@ async function open({ event, caller }) {
   let moderation = [];
 
   try {
-    const [labelsRes, modRes] = await Promise.all([
+    const [labelsResult, moderationResult] = await Promise.all([
       detectProductsLabelsWithKey(productsPhotoKey),
-      detectModerationWithKey(stallPhotoKey)
+      detectModerationWithKey(stallPhotoKey),
     ]);
 
-    labels = labelsRes.labels;
-    moderation = modRes.moderation;
+    labels = labelsResult.labels;
+    moderation = moderationResult.moderation;
 
-    productsPhotoKey = labelsRes.keyUsed;
-    stallPhotoKey = modRes.keyUsed;
-  } catch (e) {
-    console.log('REKOGNITION_ERROR', awsDetails(e));
+    productsPhotoKey = labelsResult.keyUsed;
+    stallPhotoKey = moderationResult.keyUsed;
+  } catch (error) {
+    console.log('REKOGNITION_ERROR', awsDetails(error));
 
-    if (isResourceNotFound(e)) {
+    if (isResourceNotFound(error)) {
       return bad(
         400,
         'PHOTO_NOT_FOUND',
         'No se encontró la foto en S3 (key incorrecto)',
-        JSON.stringify({ stallPhotoKey, productsPhotoKey, bucket: BUCKET_NAME, err: awsDetails(e) })
+        JSON.stringify({
+          stallPhotoKey,
+          productsPhotoKey,
+          bucket: config.BUCKET_NAME,
+          err: awsDetails(error),
+        })
       );
     }
 
-    return bad(500, 'REKOGNITION_ERROR', 'Error en Rekognition', JSON.stringify(awsDetails(e)));
+    return bad(
+      500,
+      'REKOGNITION_ERROR',
+      'Error en Rekognition',
+      JSON.stringify(awsDetails(error))
+    );
   }
 
-  const flagged = (moderation || []).length > 0;
+  const flagged = moderation.length > 0;
 
-  let inv = null;
-  try {
-    inv = await bedrockInventory(inventoryText, labels);
-  } catch (e) {
-    console.log('BEDROCK_ERROR', awsDetails(e));
-    inv = null;
-  }
-  if (!inv) inv = fallbackInventoryParse(inventoryText);
-
-  const reconciled = reconcileInventory(inv.items, labels);
+  let inventory = null;
 
   try {
-    await upsertProductsFromInventory({ stallId, items: reconciled.items, now });
-  } catch (e) {
-    console.log('UPSERT_PRODUCTS_ERROR', awsDetails(e));
+    inventory = await bedrockInventory(inventoryText, labels);
+  } catch (error) {
+    console.log('BEDROCK_ERROR', awsDetails(error));
+    inventory = null;
   }
 
-  const stallName = String(body.stallName || '').trim();
+  if (!inventory) {
+    inventory = fallbackInventoryParse(inventoryText);
+  }
 
-  await ddb.send(new UpdateCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' },
-    UpdateExpression: `
-      SET vendorUserId=:u,
-          #name=:n,
-          currentOpen=:o,
-          currentLat=:lat,
-          currentLng=:lng,
-          currentAddressLabel=:al,
-          currentAddress=:a,
-          gsi1pk=:gpk,
-          gsi1sk=:gsk,
-          updatedAt=:now
-    `,
-    ExpressionAttributeNames: { '#name': 'name' },
-    ExpressionAttributeValues: {
-      ':u': userId,
-      ':n': stallName || undefined,
-      ':o': openSk,
-      ':lat': lat,
-      ':lng': lng,
-      ':al': geo?.label ?? null,
-      ':a': geo?.address ?? null,
-      ':gpk': 'OPEN',
-      ':gsk': `OPEN#${now}#${stallId}`,
-      ':now': now
-    }
-  }));
+  const reconciled = reconcileInventory(inventory.items, labels);
 
-  await ddb.send(new PutCommand({
-    TableName: OPENINGLOGS_TABLE,
-    Item: {
-      pk: pkStall(stallId),
-      sk: openSk,
-      entityType: 'OPENING',
-      status: flagged ? 'REVIEW' : 'OPEN',
-      openedAt: now,
-      lat, lng, accuracy,
-      addressLabel: geo?.label ?? null,
-      address: geo?.address ?? null,
-      stallPhotoKey,
-      productsPhotoKey,
-      rekognitionLabels: labels,
-      moderationLabels: moderation,
-      inventoryRaw: inventoryText,
-      inventoryItems: reconciled.items,
-      inventorySuggestions: reconciled.suggestions
-    }
-  }));
+  try {
+    await upsertProductsFromInventory({
+      stallId,
+      items: reconciled.items,
+      now,
+    });
+  } catch (error) {
+    console.log('UPSERT_PRODUCTS_ERROR', awsDetails(error));
+  }
+
+  const resolvedStallName =
+    stallName || currentProfile.name || 'Puesto';
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+      UpdateExpression: `
+        SET vendorUserId = :userId,
+            #name = :name,
+            currentOpen = :currentOpen,
+            currentLat = :lat,
+            currentLng = :lng,
+            currentAddressLabel = :addressLabel,
+            currentAddress = :address,
+            gsi1pk = :gsi1pk,
+            gsi1sk = :gsi1sk,
+            updatedAt = :updatedAt
+      `,
+      ExpressionAttributeNames: {
+        '#name': 'name',
+      },
+      ExpressionAttributeValues: {
+        ':userId': userId,
+        ':name': resolvedStallName,
+        ':currentOpen': openSk,
+        ':lat': lat,
+        ':lng': lng,
+        ':addressLabel': geo?.label ?? null,
+        ':address': geo?.address ?? null,
+        ':gsi1pk': 'OPEN',
+        ':gsi1sk': `OPEN#${now}#${stallId}`,
+        ':updatedAt': now,
+      },
+    })
+  );
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkUser(userId), sk: skStall(stallId) },
+      UpdateExpression: 'SET #name = :name',
+      ExpressionAttributeNames: {
+        '#name': 'name',
+      },
+      ExpressionAttributeValues: {
+        ':name': resolvedStallName,
+      },
+    })
+  );
+
+  await ddb.send(
+    new PutCommand({
+      TableName: config.OPENINGLOGS_TABLE,
+      Item: {
+        pk: pkStall(stallId),
+        sk: openSk,
+        entityType: 'OPENING',
+        status: flagged ? 'REVIEW' : 'OPEN',
+        openedAt: now,
+        lat,
+        lng,
+        accuracy,
+        addressLabel: geo?.label ?? null,
+        address: geo?.address ?? null,
+        stallPhotoKey,
+        productsPhotoKey,
+        rekognitionLabels: labels,
+        moderationLabels: moderation,
+        inventoryRaw: inventoryText,
+        inventoryItems: reconciled.items,
+        inventorySuggestions: reconciled.suggestions,
+      },
+    })
+  );
 
   return ok({
     stallId,
@@ -878,62 +778,86 @@ async function open({ event, caller }) {
       lat,
       lng,
       accuracy,
-      addressLabel: geo?.label ?? null
+      addressLabel: geo?.label ?? null,
     },
     inventory: {
-      items: reconciled.items.map(x => ({ display: x.display, qty: x.qty, canonical: x.canonical })),
-      suggestions: reconciled.suggestions
-    }
+      items: reconciled.items.map((item) => ({
+        display: item.display,
+        qty: item.qty,
+        canonical: item.canonical,
+      })),
+      suggestions: reconciled.suggestions,
+    },
   });
 }
 
 async function getCurrent({ stallId, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.STALLS_TABLE || !config.OPENINGLOGS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Faltan tablas');
+  }
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const prof = await ddb.send(new GetCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' }
-  }));
+  const profileResponse = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
 
-  const stall = prof.Item || null;
+  const stall = profileResponse.Item || null;
   let opening = null;
 
   if (stall?.currentOpen) {
-    const o = await ddb.send(new GetCommand({
-      TableName: OPENINGLOGS_TABLE,
-      Key: { pk: pkStall(stallId), sk: stall.currentOpen }
-    }));
-    opening = o.Item || null;
+    const openingResponse = await ddb.send(
+      new GetCommand({
+        TableName: config.OPENINGLOGS_TABLE,
+        Key: { pk: pkStall(stallId), sk: stall.currentOpen },
+      })
+    );
+
+    opening = openingResponse.Item || null;
   } else {
-    const q = await ddb.send(new QueryCommand({
-      TableName: OPENINGLOGS_TABLE,
-      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
-      ExpressionAttributeValues: { ':pk': pkStall(stallId), ':pfx': 'OPEN#' },
-      ScanIndexForward: false,
-      Limit: 1
-    }));
-    opening = (q.Items && q.Items[0]) ? q.Items[0] : null;
+    const queryResponse = await ddb.send(
+      new QueryCommand({
+        TableName: config.OPENINGLOGS_TABLE,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+        ExpressionAttributeValues: {
+          ':pk': pkStall(stallId),
+          ':prefix': 'OPEN#',
+        },
+        ScanIndexForward: false,
+        Limit: 1,
+      })
+    );
+
+    opening = queryResponse.Items?.[0] || null;
   }
 
   return ok({ stall, opening });
 }
 
 async function close({ stallId, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.STALLS_TABLE || !config.OPENINGLOGS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Faltan tablas');
+  }
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const prof = await ddb.send(new GetCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' }
-  }));
-  const stall = prof.Item || null;
+  const profileResponse = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+    })
+  );
+
+  const stall = profileResponse.Item || null;
   if (!stall) return bad(404, 'NOT_FOUND', 'Puesto no existe');
 
   const currentOpen = stall.currentOpen;
@@ -941,46 +865,69 @@ async function close({ stallId, caller }) {
 
   const now = nowIso();
 
-  await ddb.send(new UpdateCommand({
-    TableName: OPENINGLOGS_TABLE,
-    Key: { pk: pkStall(stallId), sk: currentOpen },
-    UpdateExpression: 'SET #status=:s, closedAt=:c',
-    ExpressionAttributeNames: { '#status': 'status' },
-    ExpressionAttributeValues: { ':s': 'CLOSED', ':c': now }
-  }));
+  await ddb.send(
+    new UpdateCommand({
+      TableName: config.OPENINGLOGS_TABLE,
+      Key: { pk: pkStall(stallId), sk: currentOpen },
+      UpdateExpression: 'SET #status = :status, closedAt = :closedAt',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+      },
+      ExpressionAttributeValues: {
+        ':status': 'CLOSED',
+        ':closedAt': now,
+      },
+    })
+  );
 
-  await ddb.send(new UpdateCommand({
-    TableName: STALLS_TABLE,
-    Key: { pk: pkStall(stallId), sk: 'PROFILE' },
-    UpdateExpression: 'REMOVE gsi1pk, gsi1sk SET currentOpen=:n, updatedAt=:u',
-    ExpressionAttributeValues: { ':n': null, ':u': now }
-  }));
+  await ddb.send(
+    new UpdateCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(stallId), sk: 'PROFILE' },
+      UpdateExpression: 'REMOVE gsi1pk, gsi1sk SET currentOpen = :currentOpen, updatedAt = :updatedAt',
+      ExpressionAttributeValues: {
+        ':currentOpen': null,
+        ':updatedAt': now,
+      },
+    })
+  );
 
   return ok({ ok: true });
 }
 
 async function listOpenings({ stallId, event, caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (!config.OPENINGLOGS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Falta OPENINGLOGS_TABLE');
+  }
 
   const owns = await assertOwnsStall(userId, stallId);
   if (!owns) return bad(403, 'FORBIDDEN', 'No es tu puesto');
 
-  const limit = Math.min(Number((event.queryStringParameters || {}).limit || 20), 50);
+  const limit = Math.min(
+    Number((event.queryStringParameters || {}).limit || 20),
+    50
+  );
 
-  const q = await ddb.send(new QueryCommand({
-    TableName: OPENINGLOGS_TABLE,
-    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :pfx)',
-    ExpressionAttributeValues: { ':pk': pkStall(stallId), ':pfx': 'OPEN#' },
-    ScanIndexForward: false,
-    Limit: limit
-  }));
+  const response = await ddb.send(
+    new QueryCommand({
+      TableName: config.OPENINGLOGS_TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: {
+        ':pk': pkStall(stallId),
+        ':prefix': 'OPEN#',
+      },
+      ScanIndexForward: false,
+      Limit: limit,
+    })
+  );
 
-  return ok({ openings: q.Items || [] });
+  return ok({ openings: response.Items || [] });
 }
 
 async function getMy({ caller }) {
-  const userId = callerId(caller);
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
   const first = await findFirstOwnedStall(userId);
@@ -999,5 +946,5 @@ module.exports = {
   getCurrent,
   close,
   listOpenings,
-  getMy
+  getMy,
 };

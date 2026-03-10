@@ -13,22 +13,22 @@
       "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
     },
     "categories": {
-      "function": {
-        "encuentrameApi": {
-          "bedrockModelId": "amazon.titan-text-lite-v1",
-          "bucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
-          "locationPlaceIndexName": "placeIndex4cb8293e-dev",
-          "openinglogsTable": "openinglogs-dev",
-          "productsTable": "products-dev-dev",
-          "stallsTable": "stalls-dev",
-          "usersTable": "users-dev",
-          "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-49474265716c72437831-build.zip"
-        }
-      },
       "auth": {
         "encuentrameboed4663da": {
           "googleClientId": "485871730628-2tvefjr5k98a8qhmrvj8qkmhqpm6472h.apps.googleusercontent.com"
+        }
+      },
+      "function": {
+        "encuentrameApi": {
+          "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
+          "s3Key": "amplify-builds/encuentrameApi-57786c674832336b6e47-build.zip",
+          "usersTable": "users-dev",
+          "stallsTable": "stalls-dev",
+          "openinglogsTable": "openinglogs-dev",
+          "bucketName": "encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev",
+          "productsTable": "products-dev-dev",
+          "locationPlaceIndexName": "placeIndex4cb8293e-dev",
+          "bedrockModelId": "amazon.nova-lite-v1:0"
         }
       },
       "storage": {

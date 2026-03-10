@@ -32,6 +32,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
+    _nameController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -85,6 +88,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     final titleColor = AppThemeColors.titleColor(context);
+    final subtitleColor = AppThemeColors.subtitleColor(context);
+    final count = _nameController.text.trim().length;
 
     return Scaffold(
       appBar: AppBar(
@@ -114,7 +119,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                Text(
+                  'Aquí puedes actualizar cómo quieres aparecer en la app.',
+                  style: TextStyle(
+                    color: subtitleColor,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 20),
                 TextFormField(
                   initialValue: widget.email,
                   enabled: false,
@@ -127,9 +140,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   controller: _nameController,
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _saveProfile(),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Nombre',
                     hintText: 'Tu nombre',
+                    helperText: '$count/60',
                   ),
                   validator: (value) {
                     final text = (value ?? '').trim();
@@ -162,9 +176,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 const SizedBox(height: 24),
                 SizedBox(
                   height: 52,
-                  child: FilledButton(
+                  child: FilledButton.icon(
                     onPressed: _saving ? null : _saveProfile,
-                    child: Text(_saving ? 'Guardando…' : 'Guardar cambios'),
+                    icon: _saving
+                        ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_saving ? 'Guardando…' : 'Guardar cambios'),
                   ),
                 ),
               ],

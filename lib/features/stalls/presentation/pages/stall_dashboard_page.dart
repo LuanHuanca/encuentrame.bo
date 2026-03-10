@@ -10,6 +10,7 @@ import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
 import '../../../../shared/widgets/dialogs/app_confirm_dialog.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
+import 'stall_products_page.dart';
 
 class StallDashboardPage extends StatefulWidget {
   const StallDashboardPage({
@@ -88,9 +89,8 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
       final stallPhotoKey = _opening?['stallPhotoKey'] as String?;
       final productsPhotoKey = _opening?['productsPhotoKey'] as String?;
 
-      _stallPhotoUrl = stallPhotoKey == null
-          ? null
-          : await _getStorageUrl(stallPhotoKey);
+      _stallPhotoUrl =
+      stallPhotoKey == null ? null : await _getStorageUrl(stallPhotoKey);
 
       _productsPhotoUrl = productsPhotoKey == null
           ? null
@@ -123,23 +123,26 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
       _products = rawList
           .map((item) => (item as Map).cast<String, dynamic>())
           .toList();
+
+      _products.sort(
+            (a, b) => (a['display'] ?? a['canonical'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo(
+          (b['display'] ?? b['canonical'] ?? '').toString().toLowerCase(),
+        ),
+      );
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
       }
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
       }
     } finally {
       if (mounted) {
@@ -172,19 +175,13 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
       }
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
       }
     } finally {
       if (mounted) {
@@ -193,131 +190,19 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     }
   }
 
-  Future<void> _editProduct(Map<String, dynamic> product) async {
-    final productId = (product['productId'] ?? '').toString();
-
-    if (productId.isEmpty) return;
-
-    final nameController = TextEditingController(
-      text: (product['display'] ?? product['canonical'] ?? '').toString(),
+  Future<void> _openProductsManager() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StallProductsPage(
+          stallId: widget.stallId,
+          stallName: (_stall?['name'] ?? widget.stallName).toString(),
+        ),
+      ),
     );
 
-    final quantityController = TextEditingController(
-      text: (product['lastQty'] ?? 1).toString(),
-    );
-
-    bool isActive = product['active'] == true;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setLocalState) {
-            return AlertDialog(
-              title: const Text('Editar producto'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre visible',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: quantityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Cantidad',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 10),
-                  SwitchListTile(
-                    value: isActive,
-                    onChanged: (value) {
-                      setLocalState(() => isActive = value);
-                    },
-                    title: const Text('Producto activo'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      nameController.dispose();
-      quantityController.dispose();
-      return;
-    }
-
-    final displayName = nameController.text.trim();
-    final lastQuantity = int.tryParse(quantityController.text.trim());
-
-    nameController.dispose();
-    quantityController.dispose();
-
-    final payload = <String, dynamic>{
-      'active': isActive,
-    };
-
-    if (displayName.isNotEmpty) {
-      payload['display'] = displayName;
-    }
-
-    if (lastQuantity != null) {
-      payload['lastQty'] = lastQuantity;
-    }
-
-    setState(() => _productsLoading = true);
-
-    try {
-      await _api.put(
-        '/stalls/${widget.stallId}/products/$productId',
-        payload,
-      );
-
-      if (!mounted) return;
-
-      AppSnackbar.success(context, 'Producto actualizado.');
-      await _loadProducts(showLoader: false);
-    } on ApiClientException catch (error, stackTrace) {
-      UserFriendlyMessages.logToConsole(error, stackTrace);
-
-      if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
-      }
-    } catch (error, stackTrace) {
-      UserFriendlyMessages.logToConsole(error, stackTrace);
-
-      if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _productsLoading = false);
-      }
-    }
+    if (!mounted) return;
+    await _loadProducts(showLoader: true);
   }
 
   @override
@@ -399,6 +284,8 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
 
     final status = (opening['status'] ?? 'OPEN').toString();
     final openedAt = _formatDate(opening['openedAt']?.toString());
+    final stallCategory = (_stall?['category'] ?? '').toString().trim();
+    final stallDescription = (_stall?['description'] ?? '').toString().trim();
 
     final inventoryItems =
         (opening['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
@@ -442,10 +329,22 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Estado: $status • abierto desde $openedAt',
-              style: TextStyle(color: subtitleColor),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text('Estado: $status')),
+                if (stallCategory.isNotEmpty) Chip(label: Text(stallCategory)),
+                if (openedAt.isNotEmpty) Chip(label: Text('Abierto: $openedAt')),
+              ],
             ),
+            if (stallDescription.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                stallDescription,
+                style: TextStyle(color: subtitleColor),
+              ),
+            ],
             if (addressLabel.isNotEmpty) ...[
               const SizedBox(height: 12),
               _AddressCard(
@@ -487,7 +386,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Productos detectados',
+                    'Productos',
                     style: TextStyle(
                       color: titleColor,
                       fontSize: 16,
@@ -507,13 +406,17 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
                       : () => _loadProducts(showLoader: true),
                   icon: const Icon(Icons.refresh),
                 ),
+                FilledButton.tonalIcon(
+                  onPressed: _openProductsManager,
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Gestionar'),
+                ),
               ],
             ),
             const SizedBox(height: 10),
             _ProductsCard(
               products: _products,
               subtitleColor: subtitleColor,
-              onEdit: _editProduct,
             ),
             const SizedBox(height: 16),
             ExpansionTile(
@@ -565,15 +468,15 @@ class _ProductsCard extends StatelessWidget {
   const _ProductsCard({
     required this.products,
     required this.subtitleColor,
-    required this.onEdit,
   });
 
   final List<Map<String, dynamic>> products;
   final Color subtitleColor;
-  final void Function(Map<String, dynamic>) onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = AppThemeColors.titleColor(context);
+
     if (products.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(14),
@@ -582,58 +485,76 @@ class _ProductsCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
-          'Todavía no hay productos. Abre el puesto con inventario para generarlos.',
+          'Todavía no hay productos. Abre el puesto con inventario para generarlos o agrégalos manualmente.',
           style: TextStyle(color: subtitleColor),
         ),
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          ...products.map((product) {
-            final displayName =
-            (product['display'] ?? product['canonical'] ?? 'Producto')
-                .toString();
+    return Column(
+      children: products.map((product) {
+        final displayName =
+        (product['display'] ?? product['canonical'] ?? 'Producto')
+            .toString();
+        final lastQuantity = (product['lastQty'] ?? 0).toString();
+        final isActive = product['active'] == true;
+        final category = (product['category'] ?? '').toString().trim();
+        final description = (product['description'] ?? '').toString().trim();
+        final price = product['price'];
 
-            final lastQuantity = (product['lastQty'] ?? 0).toString();
-            final isActive = product['active'] == true;
-
-            return Column(
-              children: [
-                ListTile(
-                  title: Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    isActive ? 'Activo' : 'Inactivo',
-                    style: TextStyle(color: subtitleColor),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('x$lastQuantity'),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () => onEdit(product),
-                        icon: const Icon(Icons.edit_outlined),
-                        tooltip: 'Editar',
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppThemeColors.inputFill(context),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      displayName,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
                       ),
-                    ],
+                    ),
                   ),
+                  if (price != null)
+                    Text(
+                      'Bs ${price.toString()}',
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(label: Text(isActive ? 'Activo' : 'Inactivo')),
+                  if (category.isNotEmpty) Chip(label: Text(category)),
+                  Chip(label: Text('x$lastQuantity')),
+                ],
+              ),
+              if (description.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  description,
+                  style: TextStyle(color: subtitleColor),
                 ),
-                if (product != products.last) const Divider(height: 1),
               ],
-            );
-          }),
-        ],
-      ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -846,8 +767,7 @@ class _LocationCard extends StatelessWidget {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'encuentrame.bo',
                   ),
                   MarkerLayer(

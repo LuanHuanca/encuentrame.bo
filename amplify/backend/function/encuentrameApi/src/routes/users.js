@@ -1,69 +1,88 @@
-/* eslint-disable */
-const { ok, bad } = require('../util/http');
+'use strict';
 
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-
-const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
-const USERS_TABLE = process.env.USERS_TABLE;
-
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }), {
-  marshallOptions: { removeUndefinedValues: true },
-});
-
-function callerId(caller) {
-  return caller?.sub || caller?.userId || caller?.identityId || caller?.cognitoIdentityId || null;
-}
-
-function callerEmail(caller) {
-  return caller?.email || null;
-}
+const config = require('../config');
+const { ok, bad, parseJsonBody } = require('../util/http');
+const { getUserId } = require('../util/auth');
+const { ddb } = require('../services/aws');
+const {
+  GetCommand,
+  UpdateCommand,
+  PutCommand,
+} = require('@aws-sdk/lib-dynamodb');
 
 function pkUser(userId) {
   return `USER#${userId}`;
 }
 
-function jsonBody(event) {
-  try {
-    return event?.body ? JSON.parse(event.body) : {};
-  } catch {
-    return {};
-  }
+function callerEmail(caller) {
+  return caller?.email || caller?.username || null;
 }
 
-exports.me = async ({ caller }) => {
-  const userId = callerId(caller);
+async function me({ caller }) {
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
   const emailFromToken = callerEmail(caller) || '';
 
-  if (!USERS_TABLE) {
-    return ok({ userId, name: '', email: emailFromToken, role: '' });
+  if (!config.USERS_TABLE) {
+    return ok({
+      userId,
+      name: '',
+      email: emailFromToken,
+    });
   }
 
-  const res = await ddb.send(
+  const key = { pk: pkUser(userId), sk: 'PROFILE' };
+
+  const response = await ddb.send(
     new GetCommand({
-      TableName: USERS_TABLE,
-      Key: { pk: pkUser(userId), sk: 'PROFILE' },
+      TableName: config.USERS_TABLE,
+      Key: key,
     })
   );
 
-  const item = res.Item || null;
+  let item = response.Item || null;
+
+  if (!item) {
+    const now = new Date().toISOString();
+
+    item = {
+      ...key,
+      entityType: 'USER',
+      userId,
+      name: '',
+      email: emailFromToken,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await ddb.send(
+        new PutCommand({
+          TableName: config.USERS_TABLE,
+          Item: item,
+        })
+      );
+    } catch (_) {}
+  }
 
   return ok({
     userId,
-    role: item?.role || '',
-    name: item?.name || '',
-    email: item?.email || emailFromToken || '',
+    name: item.name || '',
+    email: item.email || emailFromToken || '',
+    createdAt: item.createdAt || null,
+    updatedAt: item.updatedAt || null,
   });
-};
+}
 
-exports.updateMe = async ({ caller, event }) => {
-  const userId = callerId(caller);
+async function updateMe({ caller, event }) {
+  const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
-  if (!USERS_TABLE) return bad(500, 'ENV_MISSING', 'Falta USERS_TABLE');
+  if (!config.USERS_TABLE) {
+    return bad(500, 'ENV_MISSING', 'Falta USERS_TABLE');
+  }
 
-  const body = jsonBody(event);
+  const body = parseJsonBody(event);
   const name = String(body.name || '').trim();
 
   if (!name) return bad(400, 'VALIDATION', 'Nombre requerido');
@@ -73,13 +92,15 @@ exports.updateMe = async ({ caller, event }) => {
   const email = callerEmail(caller) || null;
   const now = new Date().toISOString();
 
-  const out = await ddb.send(
+  const output = await ddb.send(
     new UpdateCommand({
-      TableName: USERS_TABLE,
+      TableName: config.USERS_TABLE,
       Key: { pk: pkUser(userId), sk: 'PROFILE' },
       UpdateExpression:
         'SET entityType = if_not_exists(entityType, :type), userId = if_not_exists(userId, :uid), #name = :name, email = if_not_exists(email, :email), updatedAt = :now',
-      ExpressionAttributeNames: { '#name': 'name' },
+      ExpressionAttributeNames: {
+        '#name': 'name',
+      },
       ExpressionAttributeValues: {
         ':type': 'USER',
         ':uid': userId,
@@ -91,7 +112,7 @@ exports.updateMe = async ({ caller, event }) => {
     })
   );
 
-  const item = out.Attributes || {};
+  const item = output.Attributes || {};
 
   return ok({
     userId,
@@ -99,4 +120,9 @@ exports.updateMe = async ({ caller, event }) => {
     email: item.email || email || '',
     updatedAt: item.updatedAt || now,
   });
+}
+
+module.exports = {
+  me,
+  updateMe,
 };
