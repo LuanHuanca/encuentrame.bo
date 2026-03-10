@@ -79,7 +79,7 @@
         "HostedUIDomain": "encuentramebo27e7e35d-27e7e35d-dev",
         "OAuthMetadata": "{\"AllowedOAuthFlows\":[\"code\"],\"AllowedOAuthScopes\":[\"phone\",\"email\",\"openid\",\"profile\",\"aws.cognito.signin.user.admin\"],\"CallbackURLs\":[\"encuentrame://callback/\"],\"LogoutURLs\":[\"encuentrame://signout/\"]}"
       },
-      "lastPushTimeStamp": "2026-03-10T01:06:23.660Z",
+      "lastPushTimeStamp": "2026-03-10T02:07:45.624Z",
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-encuentramebo-dev-f3550-deployment/amplify-cfn-templates/auth/encuentrameboed4663da-cloudformation-template.json",
         "logicalId": "authencuentrameboed4663da"
