@@ -10,20 +10,37 @@ class StallFormPage extends StatefulWidget {
     super.key,
     this.stallId,
     this.initialName,
+    this.initialCategory,
+    this.initialDescription,
   });
 
   final String? stallId;
   final String? initialName;
+  final String? initialCategory;
+  final String? initialDescription;
 
   @override
   State<StallFormPage> createState() => _StallFormPageState();
 }
 
 class _StallFormPageState extends State<StallFormPage> {
+  static const List<String> _categories = [
+    'Comida',
+    'Bebidas',
+    'Ropa',
+    'Accesorios',
+    'Tecnología',
+    'Servicios',
+    'Otros',
+  ];
+
   final RestClient _api = RestClient();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
 
+  late final TextEditingController _nameController;
+  late final TextEditingController _descriptionController;
+
+  String? _selectedCategory;
   bool _saving = false;
 
   bool get _isCreate => widget.stallId == null;
@@ -31,14 +48,21 @@ class _StallFormPageState extends State<StallFormPage> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(
-      text: widget.initialName ?? '',
+    _nameController = TextEditingController(text: widget.initialName ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.initialDescription ?? '',
     );
+
+    final initialCategory = widget.initialCategory?.trim();
+    _selectedCategory = _categories.contains(initialCategory)
+        ? initialCategory
+        : null;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -50,20 +74,22 @@ class _StallFormPageState extends State<StallFormPage> {
     setState(() => _saving = true);
 
     try {
-      final name = _nameController.text.trim();
+      final payload = <String, dynamic>{
+        'name': _nameController.text.trim(),
+        'category': _selectedCategory,
+        'description': _descriptionController.text.trim(),
+      };
 
       if (_isCreate) {
-        await _api.post('/stalls', {'name': name});
+        await _api.post('/stalls', payload);
 
         if (!mounted) return;
-
         AppSnackbar.success(context, 'Puesto creado.');
       } else {
-        await _api.put('/stalls/${widget.stallId}', {'name': name});
+        await _api.put('/stalls/${widget.stallId}', payload);
 
         if (!mounted) return;
-
-        AppSnackbar.success(context, 'Nombre del puesto actualizado.');
+        AppSnackbar.success(context, 'Puesto actualizado.');
       }
 
       Navigator.pop(context, true);
@@ -71,20 +97,12 @@ class _StallFormPageState extends State<StallFormPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
-      AppSnackbar.error(
-        context,
-        UserFriendlyMessages.fromApiError(error),
-      );
+      AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
-      AppSnackbar.error(
-        context,
-        UserFriendlyMessages.fromGenericError(error),
-      );
+      AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -118,7 +136,7 @@ class _StallFormPageState extends State<StallFormPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 Text(
-                  _isCreate ? 'Crea tu puesto' : 'Edita el nombre de tu puesto',
+                  _isCreate ? 'Crea tu puesto' : 'Edita tu puesto',
                   style: TextStyle(
                     color: titleColor,
                     fontSize: 20,
@@ -128,8 +146,8 @@ class _StallFormPageState extends State<StallFormPage> {
                 const SizedBox(height: 8),
                 Text(
                   _isCreate
-                      ? 'Usa un nombre simple para identificar tu carrito o puesto ambulante.'
-                      : 'Actualiza el nombre con el que quieres aparecer.',
+                      ? 'Agrega un nombre claro, una categoría y una descripción breve para que tu puesto se vea mejor.'
+                      : 'Actualiza la información principal de tu puesto.',
                   style: TextStyle(
                     color: subtitleColor,
                     fontSize: 14,
@@ -138,8 +156,7 @@ class _StallFormPageState extends State<StallFormPage> {
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _nameController,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _save(),
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Nombre del puesto',
                     hintText: 'Ejemplo: Pipocas Don Luis',
@@ -147,18 +164,48 @@ class _StallFormPageState extends State<StallFormPage> {
                   validator: (value) {
                     final text = (value ?? '').trim();
 
-                    if (text.isEmpty) {
-                      return 'El nombre es obligatorio';
-                    }
+                    if (text.isEmpty) return 'El nombre es obligatorio';
+                    if (text.length < 2) return 'El nombre es demasiado corto';
+                    if (text.length > 60) return 'Máximo 60 caracteres';
 
-                    if (text.length < 2) {
-                      return 'El nombre es demasiado corto';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoría del puesto',
+                  ),
+                  items: _categories
+                      .map(
+                        (item) => DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(item),
+                    ),
+                  )
+                      .toList(),
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _selectedCategory = value),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descriptionController,
+                  minLines: 2,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _save(),
+                  decoration: const InputDecoration(
+                    labelText: 'Descripción',
+                    hintText:
+                    'Ejemplo: pipocas, bebidas frías, snacks o productos que sueles vender',
+                  ),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+                    if (text.length > 180) {
+                      return 'Máximo 180 caracteres';
                     }
-
-                    if (text.length > 60) {
-                      return 'Máximo 60 caracteres';
-                    }
-
                     return null;
                   },
                 ),

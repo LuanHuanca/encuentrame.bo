@@ -6,10 +6,9 @@ function getCaller(event) {
     event?.requestContext?.authorizer?.jwt?.claims ||
     null;
 
-  const identity = event?.requestContext?.identity || null;
+  if (claims) return claims;
 
-  if (claims) return { ...claims, _identity: identity };
-  if (event?.requestContext?.authorizer) return { ...event.requestContext.authorizer, _identity: identity };
+  const identity = event?.requestContext?.identity || null;
   if (identity) return identity;
 
   return null;
@@ -18,6 +17,7 @@ function getCaller(event) {
 function getUserId(caller) {
   return (
     caller?.sub ||
+    caller?.username ||
     caller?.userId ||
     caller?.identityId ||
     caller?.cognitoIdentityId ||
@@ -26,4 +26,7 @@ function getUserId(caller) {
   );
 }
 
-module.exports = { getCaller, getUserId };
+module.exports = {
+  getCaller,
+  getUserId,
+};

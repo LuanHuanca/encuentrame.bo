@@ -4,7 +4,7 @@ const config = require('../config');
 const { ok, bad } = require('../util/http');
 const { getUserId } = require('../util/auth');
 const { ddb } = require('../services/aws');
-const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -157,6 +157,10 @@ function computeStallNameMatchScore(stallName, queryText) {
   return computeTextMatchScore(stallName, queryText);
 }
 
+function normalizeCategory(value) {
+  return normalizeText(value);
+}
+
 async function queryOpenStallProfiles(maxItems) {
   if (!config.STALLS_TABLE) return [];
 
@@ -187,25 +191,40 @@ async function queryOpenStallProfiles(maxItems) {
   return items;
 }
 
-async function listOpenStallsNear({ event, caller }) {
+async function listCategories({ caller }) {
   const userId = getUserId(caller);
   if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
 
-  const query = event?.queryStringParameters || {};
-  const lat = toNumber(query.lat);
-  const lng = toNumber(query.lng);
+  const profiles = await queryOpenStallProfiles(500);
 
-  if (lat === null || lng === null) {
-    return bad(400, 'VALIDATION', 'lat y lng son requeridos');
-  }
+  const categories = [
+    ...new Set(
+      profiles
+        .map((item) => String(item.category || '').trim())
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
 
+  return ok({ categories });
+}
+
+async function listOpenStallsNear({ event, caller }) {
+  const userId = getUserId(caller);
+  if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
   if (!config.STALLS_TABLE) {
     return bad(500, 'ENV_MISSING', 'Falta STALLS_TABLE');
   }
 
+  const query = event?.queryStringParameters || {};
+
+  const lat = toNumber(query.lat);
+  const lng = toNumber(query.lng);
+  const hasLocation = lat !== null && lng !== null;
+
   const radiusKm = clamp(toNumber(query.radiusKm) ?? 10, 0.1, 50);
-  const limit = clamp(toNumber(query.limit) ?? 100, 1, 200);
+  const limit = clamp(toNumber(query.limit) ?? 50, 1, 200);
   const searchText = String(query.q || '').trim();
+  const categoryFilter = normalizeCategory(query.category || '');
 
   const includeProducts = String(query.includeProducts || '0') === '1';
   const productsLimit = clamp(toNumber(query.productsLimit) ?? 6, 1, 20);
@@ -217,41 +236,63 @@ async function listOpenStallsNear({ event, caller }) {
     .map((profile) => {
       const stallLat = toNumber(profile.currentLat);
       const stallLng = toNumber(profile.currentLng);
-
-      if (stallLat === null || stallLng === null) return null;
-
       const stallName = String(profile.name || '').trim() || 'Puesto';
+      const profileCategory = String(profile.category || '').trim() || null;
+      const profileDescription =
+        String(profile.description || '').trim() || null;
+
+      if (categoryFilter) {
+        const currentCategory = normalizeCategory(profileCategory || '');
+        if (currentCategory !== categoryFilter) return null;
+      }
+
       const nameScore = searchText
         ? computeStallNameMatchScore(stallName, searchText)
         : 1;
 
       if (searchText && nameScore <= 0) return null;
 
-      const distanceMeters = haversineMeters(
-        lat,
-        lng,
-        stallLat,
-        stallLng
-      );
+      let distanceMeters = null;
+      if (
+        hasLocation &&
+        stallLat !== null &&
+        stallLng !== null
+      ) {
+        distanceMeters = Math.round(
+          haversineMeters(lat, lng, stallLat, stallLng)
+        );
+
+        if (distanceMeters > radiusMeters) return null;
+      }
 
       return {
         stallId: String(profile.stallId || '').trim(),
         name: stallName,
+        category: profileCategory,
+        description: profileDescription,
         isOpen: !!profile.currentOpen,
         lat: stallLat,
         lng: stallLng,
         addressLabel: profile.currentAddressLabel ?? null,
-        distanceMeters: Math.round(distanceMeters),
+        distanceMeters,
         nameScore,
       };
     })
     .filter(Boolean)
-    .filter((stall) => stall.stallId && stall.distanceMeters <= radiusMeters)
+    .filter((stall) => stall.stallId)
     .sort((a, b) => {
-      if (a.distanceMeters !== b.distanceMeters) {
-        return a.distanceMeters - b.distanceMeters;
+      if (hasLocation) {
+        const aDistance = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+        const bDistance = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+
+        if (aDistance !== bDistance) return aDistance - bDistance;
       }
-      return (b.nameScore || 0) - (a.nameScore || 0);
+
+      if ((b.nameScore || 0) !== (a.nameScore || 0)) {
+        return (b.nameScore || 0) - (a.nameScore || 0);
+      }
+
+      return String(a.name || '').localeCompare(String(b.name || ''));
     })
     .slice(0, limit);
 
@@ -275,34 +316,39 @@ async function listOpenStallsNear({ event, caller }) {
               ':prefix': 'PROD#',
             },
             ScanIndexForward: true,
-            Limit: 80,
+            Limit: 200,
           })
         );
 
-        const productsPreview = (result.Items || [])
+        const activeProducts = (result.Items || [])
           .map((item) => ({
             productId: item.productId,
             display: item.display,
             canonical: item.canonical,
+            category: item.category ?? null,
+            description: item.description ?? null,
             price: item.price ?? null,
             active: item.active ?? true,
             lastQty: item.lastQty ?? null,
             lastSeenAt: item.lastSeenAt ?? null,
           }))
-          .filter((product) => product.active === true)
-          .slice(0, productsLimit);
+          .filter((product) => product.active === true);
 
-        const { nameScore, ...stallClean } = stall;
+        const productsPreview = activeProducts.slice(0, productsLimit);
+
+        const { nameScore, ...cleanStall } = stall;
 
         return {
-          ...stallClean,
+          ...cleanStall,
+          productsCount: activeProducts.length,
           productsPreview,
         };
       } catch (_) {
-        const { nameScore, ...stallClean } = stall;
+        const { nameScore, ...cleanStall } = stall;
 
         return {
-          ...stallClean,
+          ...cleanStall,
+          productsCount: 0,
           productsPreview: [],
         };
       }
@@ -348,11 +394,13 @@ async function listStallProductsPublic({ stallId, event, caller }) {
     })
   );
 
-  let products = (result.Items || [])
+  const products = (result.Items || [])
     .map((item) => ({
       productId: item.productId,
       canonical: item.canonical,
       display: item.display,
+      category: item.category ?? null,
+      description: item.description ?? null,
       price: item.price ?? null,
       active: item.active ?? true,
       lastQty: item.lastQty ?? null,
@@ -367,12 +415,13 @@ async function listStallProductsPublic({ stallId, event, caller }) {
       }
       return String(a.display || '').localeCompare(String(b.display || ''));
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(({ matchScore, ...product }) => product);
 
   return ok({
     stallId: id,
     count: products.length,
-    products: products.map(({ matchScore, ...product }) => product),
+    products,
   });
 }
 
@@ -384,10 +433,7 @@ async function searchProductsNear({ event, caller }) {
   const lat = toNumber(query.lat);
   const lng = toNumber(query.lng);
   const searchText = String(query.q || '').trim();
-
-  if (lat === null || lng === null) {
-    return bad(400, 'VALIDATION', 'lat y lng son requeridos');
-  }
+  const category = String(query.category || '').trim();
 
   if (!searchText) {
     return bad(400, 'VALIDATION', 'q es requerido');
@@ -408,11 +454,12 @@ async function searchProductsNear({ event, caller }) {
   const openResponse = await listOpenStallsNear({
     event: {
       queryStringParameters: {
-        lat: String(lat),
-        lng: String(lng),
+        ...(lat !== null ? { lat: String(lat) } : {}),
+        ...(lng !== null ? { lng: String(lng) } : {}),
         radiusKm: String(radiusKm),
         limit: '200',
         includeProducts: '0',
+        ...(category ? { category } : {}),
       },
     },
     caller,
@@ -440,7 +487,7 @@ async function searchProductsNear({ event, caller }) {
           ':prefix': 'PROD#',
         },
         ScanIndexForward: true,
-        Limit: 200,
+        Limit: 250,
       })
     );
 
@@ -450,6 +497,8 @@ async function searchProductsNear({ event, caller }) {
           productId: item.productId,
           display: item.display,
           canonical: item.canonical,
+          category: item.category ?? null,
+          description: item.description ?? null,
           price: item.price ?? null,
           active: item.active ?? true,
           lastQty: item.lastQty ?? null,
@@ -460,7 +509,9 @@ async function searchProductsNear({ event, caller }) {
         return {
           stallId,
           stallName: stall.name,
-          distanceMeters: stall.distanceMeters,
+          stallCategory: stall.category ?? null,
+          stallDescription: stall.description ?? null,
+          distanceMeters: stall.distanceMeters ?? null,
           addressLabel: stall.addressLabel ?? null,
           lat: stall.lat,
           lng: stall.lng,
@@ -475,8 +526,11 @@ async function searchProductsNear({ event, caller }) {
   }
 
   results.sort((a, b) => {
-    if (a.distanceMeters !== b.distanceMeters) {
-      return a.distanceMeters - b.distanceMeters;
+    const aDistance = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+    const bDistance = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+
+    if (aDistance !== bDistance) {
+      return aDistance - bDistance;
     }
 
     if (b.matchScore !== a.matchScore) {
@@ -488,7 +542,9 @@ async function searchProductsNear({ event, caller }) {
     );
   });
 
-  const finalResults = results.slice(0, limit).map(({ matchScore, ...row }) => row);
+  const finalResults = results
+    .slice(0, limit)
+    .map(({ matchScore, ...row }) => row);
 
   return ok({
     q: searchText,
@@ -498,8 +554,120 @@ async function searchProductsNear({ event, caller }) {
   });
 }
 
+async function getStallPublicDetail({ stallId, event, caller }) {
+  const userId = getUserId(caller);
+  if (!userId) return bad(401, 'UNAUTHORIZED', 'No autenticado');
+  if (
+    !config.STALLS_TABLE ||
+    !config.OPENINGLOGS_TABLE ||
+    !config.PRODUCTS_TABLE
+  ) {
+    return bad(500, 'ENV_MISSING', 'Faltan tablas');
+  }
+
+  const id = String(stallId || '').trim();
+  if (!id) return bad(400, 'VALIDATION', 'stallId requerido');
+
+  const profileResponse = await ddb.send(
+    new GetCommand({
+      TableName: config.STALLS_TABLE,
+      Key: { pk: pkStall(id), sk: 'PROFILE' },
+    })
+  );
+
+  const stall = profileResponse.Item || null;
+  if (!stall) return bad(404, 'NOT_FOUND', 'Puesto no encontrado');
+
+  let opening = null;
+
+  if (stall.currentOpen) {
+    const openingResponse = await ddb.send(
+      new GetCommand({
+        TableName: config.OPENINGLOGS_TABLE,
+        Key: { pk: pkStall(id), sk: stall.currentOpen },
+      })
+    );
+
+    opening = openingResponse.Item || null;
+  }
+
+  const productsResponse = await ddb.send(
+    new QueryCommand({
+      TableName: config.PRODUCTS_TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: {
+        ':pk': pkStall(id),
+        ':prefix': 'PROD#',
+      },
+      ScanIndexForward: true,
+      Limit: 300,
+    })
+  );
+
+  const products = (productsResponse.Items || [])
+    .map((item) => ({
+      productId: item.productId,
+      display: item.display,
+      canonical: item.canonical,
+      category: item.category ?? null,
+      description: item.description ?? null,
+      price: item.price ?? null,
+      active: item.active ?? true,
+      lastQty: item.lastQty ?? null,
+      lastSeenAt: item.lastSeenAt ?? null,
+    }))
+    .filter((product) => product.active === true)
+    .sort((a, b) =>
+      String(a.display || '').localeCompare(String(b.display || ''))
+    );
+
+  const query = event?.queryStringParameters || {};
+  const lat = toNumber(query.lat);
+  const lng = toNumber(query.lng);
+
+  let distanceMeters = null;
+
+  if (
+    lat !== null &&
+    lng !== null &&
+    stall.currentLat != null &&
+    stall.currentLng != null
+  ) {
+    distanceMeters = Math.round(
+      haversineMeters(lat, lng, Number(stall.currentLat), Number(stall.currentLng))
+    );
+  }
+
+  return ok({
+    stall: {
+      stallId: stall.stallId,
+      name: stall.name,
+      category: stall.category ?? null,
+      description: stall.description ?? null,
+      isOpen: !!stall.currentOpen,
+      lat: stall.currentLat ?? null,
+      lng: stall.currentLng ?? null,
+      addressLabel: stall.currentAddressLabel ?? null,
+      distanceMeters,
+    },
+    opening: opening
+      ? {
+          status: opening.status,
+          openedAt: opening.openedAt,
+          addressLabel: opening.addressLabel ?? null,
+          stallPhotoKey: opening.stallPhotoKey ?? null,
+          productsPhotoKey: opening.productsPhotoKey ?? null,
+        }
+      : null,
+    productsCount: products.length,
+    products,
+  });
+}
+
 module.exports = {
+  listCategories,
   listOpenStallsNear,
   listStallProductsPublic,
   searchProductsNear,
+  getStallPublicDetail,
 };

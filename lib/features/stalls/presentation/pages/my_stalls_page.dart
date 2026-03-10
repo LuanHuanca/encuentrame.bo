@@ -9,6 +9,7 @@ import '../../../../shared/widgets/feedback/app_snackbar.dart';
 import 'open_stall_page.dart';
 import 'stall_dashboard_page.dart';
 import 'stall_form_page.dart';
+import 'stall_products_page.dart';
 
 class MyStallsPage extends StatefulWidget {
   const MyStallsPage({super.key});
@@ -55,19 +56,13 @@ class _MyStallsPageState extends State<MyStallsPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
       }
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
       }
     } finally {
       if (mounted && showLoader) {
@@ -94,6 +89,8 @@ class _MyStallsPageState extends State<MyStallsPage> {
         builder: (_) => StallFormPage(
           stallId: (stall['stallId'] ?? '').toString(),
           initialName: (stall['name'] ?? '').toString(),
+          initialCategory: (stall['category'] ?? '').toString(),
+          initialDescription: (stall['description'] ?? '').toString(),
         ),
       ),
     );
@@ -133,8 +130,27 @@ class _MyStallsPageState extends State<MyStallsPage> {
     }
 
     if (!mounted) return;
-
     await _loadStall(showLoader: true);
+  }
+
+  Future<void> _manageProducts(Map<String, dynamic> stall) async {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Mi puesto').toString();
+
+    if (stallId.isEmpty) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StallProductsPage(
+          stallId: stallId,
+          stallName: stallName,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    await _loadStall(showLoader: false);
   }
 
   Future<void> _closeStall(Map<String, dynamic> stall) async {
@@ -165,19 +181,13 @@ class _MyStallsPageState extends State<MyStallsPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
       }
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
       }
     } finally {
       if (mounted) {
@@ -219,19 +229,13 @@ class _MyStallsPageState extends State<MyStallsPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromApiError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromApiError(error));
       }
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (mounted) {
-        AppSnackbar.error(
-          context,
-          UserFriendlyMessages.fromGenericError(error),
-        );
+        AppSnackbar.error(context, UserFriendlyMessages.fromGenericError(error));
       }
     } finally {
       if (mounted) {
@@ -280,7 +284,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
               Text(
-                'Publica tu ubicación actual para que los compradores te encuentren.',
+                'Publica tu ubicación actual para que los compradores te encuentren. También puedes gestionar tu información y productos desde aquí.',
                 style: TextStyle(
                   color: subtitleColor,
                   fontSize: 14,
@@ -305,6 +309,7 @@ class _MyStallsPageState extends State<MyStallsPage> {
                   busy: _busy,
                   onPrimary: () => _openOrViewDashboard(_stall!),
                   onEdit: () => _editStallName(_stall!),
+                  onProducts: () => _manageProducts(_stall!),
                   onClose: _stall!['isOpen'] == true
                       ? () => _closeStall(_stall!)
                       : null,
@@ -400,6 +405,7 @@ class _SingleStallCard extends StatelessWidget {
     required this.busy,
     required this.onPrimary,
     required this.onEdit,
+    required this.onProducts,
     required this.onClose,
     required this.onDelete,
   });
@@ -408,6 +414,7 @@ class _SingleStallCard extends StatelessWidget {
   final bool busy;
   final VoidCallback onPrimary;
   final VoidCallback onEdit;
+  final VoidCallback onProducts;
   final VoidCallback? onClose;
   final VoidCallback onDelete;
 
@@ -417,9 +424,10 @@ class _SingleStallCard extends StatelessWidget {
     final subtitleColor = AppThemeColors.subtitleColor(context);
 
     final stallName = (stall['name'] ?? 'Mi puesto').toString();
+    final category = (stall['category'] ?? '').toString().trim();
+    final description = (stall['description'] ?? '').toString().trim();
     final isOpen = stall['isOpen'] == true;
-    final addressLabel =
-    (stall['currentAddressLabel'] ?? '').toString().trim();
+    final addressLabel = (stall['currentAddressLabel'] ?? '').toString().trim();
 
     return Card(
       elevation: 0,
@@ -459,6 +467,20 @@ class _SingleStallCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (category.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Chip(label: Text(category)),
+            ],
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                description,
+                style: TextStyle(
+                  color: subtitleColor,
+                  fontSize: 13,
+                ),
+              ),
+            ],
             if (addressLabel.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -492,9 +514,19 @@ class _SingleStallCard extends StatelessWidget {
                           ? Icons.dashboard_outlined
                           : Icons.play_arrow_rounded,
                     ),
-                    label: Text(
-                      isOpen ? 'Ver panel' : 'Abrir puesto',
-                    ),
+                    label: Text(isOpen ? 'Ver panel' : 'Abrir puesto'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : onProducts,
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('Productos'),
                   ),
                 ),
               ],
@@ -506,7 +538,7 @@ class _SingleStallCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: busy ? null : onEdit,
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Editar nombre'),
+                    label: const Text('Editar'),
                   ),
                 ),
               ],

@@ -12,23 +12,42 @@ function extractJson(text) {
   return null;
 }
 
-function fallbackInventoryParse(raw) {
-  const parts = String(raw || '').split(',').map(x => x.trim()).filter(Boolean);
-  const items = [];
-  for (const p of parts) {
-    const m = p.match(/^(\d+)\s+(.*)$/);
-    if (m) {
-      items.push({ canonical: m[2].trim(), display: m[2].trim(), qty: Number(m[1]), unit: 'unidad', category: null, tags: [], suggested: false });
-    } else {
-      items.push({ canonical: p, display: p, qty: 1, unit: 'unidad', category: null, tags: [], suggested: false });
-    }
-  }
-  return { items };
+function normalizeText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
-const VISION_STOP_LABELS = new Set([
-  'Person','Human','Face','Man','Woman','Kid','Child','People','Adult','Smile','Head','Hand','Finger'
-]);
+function spanishWordToNumber(word) {
+  const map = {
+    un: 1,
+    una: 1,
+    uno: 1,
+    dos: 2,
+    tres: 3,
+    cuatro: 4,
+    cinco: 5,
+    seis: 6,
+    siete: 7,
+    ocho: 8,
+    nueve: 9,
+    diez: 10,
+    once: 11,
+    doce: 12,
+    trece: 13,
+    catorce: 14,
+    quince: 15,
+    dieciseis: 16,
+    'dieciséis': 16,
+    diecisiete: 17,
+    dieciocho: 18,
+    diecinueve: 19,
+    veinte: 20,
+  };
+  return map[normalizeText(word)] ?? null;
+}
 
 const CANON_MAP = [
   ['tomatodo', 'botella'],
@@ -38,140 +57,282 @@ const CANON_MAP = [
   ['poleras', 'polera'],
   ['lentes', 'gafas de sol'],
   ['lentes de sol', 'gafas de sol'],
-  ['gafas', 'gafas de sol']
+  ['gafas', 'gafas de sol'],
+  ['zapatos', 'zapato'],
+  ['botas', 'bota'],
 ];
 
-const LABEL_SYNONYMS = [
-  { label: 'Bottle', words: ['botella','tomatodo','termo','vaso','shaker'] },
-  { label: 'Clothing', words: ['ropa','polera','camiseta','pantalón','pantalones'] },
-  { label: 'Sunglasses', words: ['gafas de sol','lentes de sol'] },
-  { label: 'Plate', words: ['plato','platos'] },
-  { label: 'Deodorant', words: ['desodorante'] }
-];
-
-function normalizeCanonical(s) {
-  const x = String(s || '').toLowerCase().trim();
-  if (!x) return '';
-  for (const [a, b] of CANON_MAP) {
-    if (x === a) return b;
+function normalizeCanonical(text) {
+  const value = normalizeText(text);
+  if (!value) return '';
+  for (const [source, target] of CANON_MAP) {
+    if (value === source) return target;
   }
-  return x;
+  return value;
 }
 
 function isNonProduct(canonical) {
-  const x = String(canonical || '').toLowerCase();
-  return ['hombre','mujer','persona','personas','gente','niño','niña','adulto','adultos'].includes(x);
+  const value = normalizeText(canonical);
+  return [
+    'hombre',
+    'mujer',
+    'persona',
+    'personas',
+    'gente',
+    'nino',
+    'nina',
+    'adulto',
+    'adultos',
+    'person',
+    'people',
+  ].includes(value);
 }
 
-function labelMatchesItem(canonical, labels) {
-  const name = canonical.toLowerCase();
-  const matched = [];
+function parseLooseInventory(raw) {
+  const text = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+y\s+/gi, ', ')
+    .replace(/\s+e\s+/gi, ', ')
+    .trim();
 
-  const filtered = (labels || []).filter(l => l?.name && !VISION_STOP_LABELS.has(l.name));
+  if (!text) return [];
 
-  for (const l of filtered) {
-    const ln = String(l.name || '').toLowerCase();
-    if (!ln) continue;
-    if (name.includes(ln) || ln.includes(name)) matched.push(l.name);
+  const parts = text
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const items = [];
+
+  for (const part of parts) {
+    const numericMatch = part.match(/^(\d+)\s+(.*)$/);
+    if (numericMatch) {
+      items.push({
+        canonical: numericMatch[2].trim(),
+        display: numericMatch[2].trim(),
+        qty: Number(numericMatch[1]),
+      });
+      continue;
+    }
+
+    const wordMatch = part.match(/^([a-záéíóúñ]+)\s+(.*)$/i);
+    if (wordMatch) {
+      const asNumber = spanishWordToNumber(wordMatch[1]);
+      if (asNumber != null) {
+        items.push({
+          canonical: wordMatch[2].trim(),
+          display: wordMatch[2].trim(),
+          qty: asNumber,
+        });
+        continue;
+      }
+    }
+
+    items.push({
+      canonical: part,
+      display: part,
+      qty: 1,
+    });
   }
 
-  for (const map of LABEL_SYNONYMS) {
-    if (map.words.some(w => name.includes(w))) matched.push(map.label);
+  return items;
+}
+
+function sanitizeInventoryItems(items) {
+  const output = [];
+  const seen = new Map();
+
+  for (const item of items || []) {
+    const canonical = normalizeCanonical(
+      item?.canonical || item?.name || item?.display || ''
+    );
+    if (!canonical || isNonProduct(canonical)) continue;
+
+    let qty = Number(item?.qty ?? 1);
+    if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+    qty = Math.round(qty);
+
+    const display = String(item?.display || canonical).trim() || canonical;
+
+    const clean = {
+      canonical,
+      display,
+      qty,
+      unit: item?.unit ?? 'unidad',
+      category: item?.category ?? null,
+      tags: Array.isArray(item?.tags) ? item.tags : [],
+      suggested: !!item?.suggested,
+    };
+
+    if (!seen.has(canonical)) {
+      seen.set(canonical, output.length);
+      output.push(clean);
+    } else {
+      const index = seen.get(canonical);
+      output[index].qty += clean.qty;
+    }
+  }
+
+  return output;
+}
+
+function fallbackInventoryParse(raw) {
+  return {
+    items: sanitizeInventoryItems(
+      parseLooseInventory(raw).map((item) => ({
+        ...item,
+        unit: 'unidad',
+        category: null,
+        tags: [],
+        suggested: false,
+      }))
+    ),
+  };
+}
+
+const VISION_STOP_LABELS = new Set([
+  'Person',
+  'Human',
+  'Face',
+  'Man',
+  'Woman',
+  'Kid',
+  'Child',
+  'People',
+  'Adult',
+  'Smile',
+  'Head',
+  'Hand',
+  'Finger',
+]);
+
+const VISION_GENERIC = new Set([
+  'Product',
+  'Products',
+  'Object',
+  'Indoors',
+  'Room',
+  'Floor',
+  'Table',
+  'Furniture',
+]);
+
+function labelMatchesItem(canonical, labels) {
+  const name = normalizeText(canonical);
+  const filtered = (labels || [])
+    .filter(
+      (item) =>
+        item?.name &&
+        !VISION_STOP_LABELS.has(item.name) &&
+        !VISION_GENERIC.has(item.name)
+    )
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  const matched = [];
+
+  for (const label of filtered) {
+    const labelName = normalizeText(label.name);
+    if (!labelName) continue;
+
+    if (name.includes(labelName) || labelName.includes(name)) {
+      matched.push(label.name);
+    }
+
+    if (matched.length >= 2) break;
   }
 
   return [...new Set(matched)];
 }
 
 function reconcileInventory(itemsFromText, labels) {
-  const out = [];
+  const items = [];
   const seen = new Map();
 
-  for (const it of (itemsFromText || [])) {
-    const canonical = normalizeCanonical(it.canonical || it.name || '');
-    if (!canonical || isNonProduct(canonical)) continue;
+  const cleanTextItems = sanitizeInventoryItems(itemsFromText || []);
+  const cleanLabels = (labels || [])
+    .filter(
+      (item) =>
+        item?.name &&
+        !VISION_STOP_LABELS.has(item.name) &&
+        !VISION_GENERIC.has(item.name)
+    )
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
 
-    const qty = Math.max(1, Number(it.qty || 1));
-    const matched = labelMatchesItem(canonical, labels);
+  for (const item of cleanTextItems) {
+    const matched = labelMatchesItem(item.canonical, cleanLabels);
 
-    const confBase = (it.suggested === true) ? 0.60 : 0.78;
-    const conf = Math.min(0.95, confBase + (matched.length ? 0.14 : 0));
-
-    const obj = {
-      canonical,
-      display: it.display || canonical,
-      qty,
-      unit: it.unit ?? 'unidad',
-      category: it.category ?? (matched[0] ?? null),
-      tags: it.tags ?? [],
-      evidence: { text: true, vision: matched },
-      confidence: Number(conf.toFixed(2)),
-      suggested: false
+    const outputItem = {
+      canonical: item.canonical,
+      display: item.display,
+      qty: item.qty,
+      unit: item.unit ?? 'unidad',
+      category: item.category ?? (matched[0] ?? null),
+      tags: item.tags ?? [],
+      evidence: { text: true, vision: matched.slice(0, 2) },
+      confidence: matched.length ? 0.92 : 0.82,
+      suggested: false,
     };
 
-    if (!seen.has(canonical)) {
-      seen.set(canonical, out.length);
-      out.push(obj);
+    if (!seen.has(outputItem.canonical)) {
+      seen.set(outputItem.canonical, items.length);
+      items.push(outputItem);
     } else {
-      const idx = seen.get(canonical);
-      out[idx].qty += qty;
-      out[idx].confidence = Math.max(out[idx].confidence, obj.confidence);
-      out[idx].evidence.vision = [...new Set([...out[idx].evidence.vision, ...matched])];
+      const index = seen.get(outputItem.canonical);
+      items[index].qty += outputItem.qty;
     }
   }
 
-  const visionOnly = [];
-  const alreadyVision = new Set(out.flatMap(x => x.evidence.vision || []));
-  for (const l of (labels || [])) {
-    if (!l?.name) continue;
-    if (VISION_STOP_LABELS.has(l.name)) continue;
-    if (alreadyVision.has(l.name)) continue;
+  const suggestions = [];
+  const used = new Set(
+    items.flatMap((item) => (item.evidence?.vision || []).filter(Boolean))
+  );
 
-    const ln = String(l.name).toLowerCase();
-    if (['clothing','food','product','object','indoor','room'].includes(ln)) continue;
+  for (const label of cleanLabels) {
+    if (!label?.name) continue;
+    if (used.has(label.name)) continue;
+    if ((label.confidence || 0) < 88) continue;
 
-    visionOnly.push({
-      canonical: normalizeCanonical(l.name),
-      display: l.name,
-      qty: 1,
-      unit: 'unidad',
-      category: l.name,
-      tags: [],
-      evidence: { text: false, vision: [l.name] },
-      confidence: 0.65,
-      suggested: true
+    suggestions.push({
+      label: label.name,
+      confidence: Math.min(
+        0.7,
+        Math.max(0.55, (label.confidence || 0) / 100)
+      ),
     });
+
+    if (suggestions.length >= 6) break;
   }
 
-  return { items: out, visionOnly };
+  return { items, suggestions };
 }
 
 async function bedrockInventory(rawText, labels) {
   if (!config.BEDROCK_MODEL_ID) return null;
 
-  const prompt =
-`Eres un extractor de inventario para un puesto de venta en Bolivia.
-Entrada: texto hablado (español) + labels de Rekognition (evidencia visual).
-Objetivo: devolver un inventario estructurado.
+  const prompt = `Eres un extractor de inventario para un puesto de venta en Bolivia.
+
+TAREA:
+- Lee el texto en español y conviértelo en items separados.
+- Si el texto dice "10 zapatos, una polera y una botella", deben salir 3 filas:
+  - zapato qty 10
+  - polera qty 1
+  - botella qty 1
 
 REGLAS:
-- Devuelve SOLO JSON válido, sin explicación.
-- Respeta cantidades del texto.
-- Normaliza: "tomatodo" -> "botella", "polera/camiseta" -> "polera", "gafas/lentes" -> "gafas de sol".
+- Devuelve SOLO JSON válido. Sin explicación. Sin markdown.
 - No inventes productos.
-- "persona/hombre/mujer" no es producto.
+- Si no hay cantidad, asume 1.
+- Normaliza:
+  - "tomatodo" o "termo" -> "botella"
+  - "camiseta" o "poleras" -> "polera"
+  - "botas" -> "bota"
+  - "zapatos" -> "zapato"
+- Ignora persona/hombre/mujer/niño como producto.
 
 FORMATO:
 {
-  "items":[
-    {
-      "canonical": string,
-      "display": string,
-      "qty": number,
-      "unit": "unidad"|"par"|"paquete"|null,
-      "category": string|null,
-      "tags": string[],
-      "suggested": boolean
-    }
+  "items": [
+    { "canonical": "string", "display": "string", "qty": number }
   ]
 }
 
@@ -185,34 +346,46 @@ ${JSON.stringify(labels || [])}
   const isTitan = config.BEDROCK_MODEL_ID.startsWith('amazon.');
 
   const body = isTitan
-    ? JSON.stringify({ inputText: prompt, textGenerationConfig: { maxTokenCount: 700, temperature: 0, topP: 1 } })
+    ? JSON.stringify({
+        inputText: prompt,
+        textGenerationConfig: {
+          maxTokenCount: 700,
+          temperature: 0,
+          topP: 1,
+        },
+      })
     : JSON.stringify({
         anthropic_version: 'bedrock-2023-05-31',
         max_tokens: 700,
         temperature: 0,
-        messages: [{ role: 'user', content: prompt }]
+        messages: [{ role: 'user', content: prompt }],
       });
 
-  const res = await bedrock.send(new InvokeModelCommand({
-    modelId: config.BEDROCK_MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body
-  }));
+  const response = await bedrock.send(
+    new InvokeModelCommand({
+      modelId: config.BEDROCK_MODEL_ID,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body,
+    })
+  );
 
-  const raw = Buffer.from(res.body).toString('utf8');
+  const raw = Buffer.from(response.body).toString('utf8');
   const parsed = JSON.parse(raw);
 
-  const outText = isTitan
-    ? (parsed?.results?.[0]?.outputText || '')
-    : (parsed?.content?.[0]?.text || '');
+  const outputText = isTitan
+    ? parsed?.results?.[0]?.outputText || ''
+    : parsed?.content?.[0]?.text || '';
 
-  const jsonStr = extractJson(outText);
-  if (!jsonStr) return null;
+  const jsonText = extractJson(outputText);
+  if (!jsonText) return null;
 
   try {
-    const obj = JSON.parse(jsonStr);
-    if (obj && Array.isArray(obj.items)) return obj;
+    const output = JSON.parse(jsonText);
+    if (output && Array.isArray(output.items)) {
+      output.items = sanitizeInventoryItems(output.items);
+      return output;
+    }
     return null;
   } catch {
     return null;
@@ -222,5 +395,5 @@ ${JSON.stringify(labels || [])}
 module.exports = {
   fallbackInventoryParse,
   bedrockInventory,
-  reconcileInventory
+  reconcileInventory,
 };

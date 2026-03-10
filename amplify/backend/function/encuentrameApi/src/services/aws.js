@@ -8,12 +8,22 @@ const { LocationClient } = require('@aws-sdk/client-location');
 
 const config = require('../config');
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: config.REGION }), {
-  marshallOptions: { removeUndefinedValues: true }
-});
+const ddb = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: config.REGION }),
+  {
+    marshallOptions: {
+      removeUndefinedValues: true,
+    },
+  }
+);
 
 const rekognition = new RekognitionClient({ region: config.REGION });
 const bedrock = new BedrockRuntimeClient({ region: config.REGION });
 const location = new LocationClient({ region: config.REGION });
 
-module.exports = { ddb, rekognition, bedrock, location };
+module.exports = {
+  ddb,
+  rekognition,
+  bedrock,
+  location,
+};
