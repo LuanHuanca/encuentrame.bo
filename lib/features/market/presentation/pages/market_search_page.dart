@@ -31,12 +31,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
   bool _gettingLocation = false;
   bool _loading = false;
   bool _hasLoadedOnce = false;
-
   bool _mapMode = false;
   bool _showUserMarker = true;
 
   String? _errorMessage;
-  String _activeModeLabel = 'Productos cercanos';
+  String _activeModeLabel = 'Puestos cercanos';
 
   int _limit = 50;
   String _selectedCategory = 'Todos';
@@ -64,42 +63,22 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
   String _formatDistance(num? meters) {
     final value = meters?.toDouble();
     if (value == null) return '';
-
-    if (value < 1000) {
-      return '${value.toStringAsFixed(0)} m';
-    }
-
+    if (value < 1000) return '${value.toStringAsFixed(0)} m';
     return '${(value / 1000).toStringAsFixed(1)} km';
   }
 
-  List<Map<String, dynamic>> _sortResults(
-      List<Map<String, dynamic>> items,
-      ) {
+  List<Map<String, dynamic>> _sortResults(List<Map<String, dynamic>> items) {
     final sorted = List<Map<String, dynamic>>.from(items);
-
     sorted.sort((a, b) {
-      final aDistance =
-          (a['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
-      final bDistance =
-          (b['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
-
-      if (aDistance != bDistance) {
-        return aDistance.compareTo(bDistance);
-      }
-
-      final aProduct =
-      ((a['product'] as Map?) ?? const {}).cast<String, dynamic>();
-      final bProduct =
-      ((b['product'] as Map?) ?? const {}).cast<String, dynamic>();
-
-      final aName =
-      (aProduct['display'] ?? aProduct['canonical'] ?? '').toString();
-      final bName =
-      (bProduct['display'] ?? bProduct['canonical'] ?? '').toString();
-
+      final aD = (a['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
+      final bD = (b['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
+      if (aD != bD) return aD.compareTo(bD);
+      final aP = ((a['product'] as Map?) ?? const {}).cast<String, dynamic>();
+      final bP = ((b['product'] as Map?) ?? const {}).cast<String, dynamic>();
+      final aName = (aP['display'] ?? aP['canonical'] ?? '').toString();
+      final bName = (bP['display'] ?? bP['canonical'] ?? '').toString();
       return aName.toLowerCase().compareTo(bName.toLowerCase());
     });
-
     return sorted;
   }
 
@@ -110,14 +89,10 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           .map((item) => item.toString().trim())
           .where((item) => item.isNotEmpty)
           .toList();
-
       if (!mounted) return;
-
       setState(() {
         _categories = ['Todos', ...values];
-        if (!_categories.contains(_selectedCategory)) {
-          _selectedCategory = 'Todos';
-        }
+        if (!_categories.contains(_selectedCategory)) _selectedCategory = 'Todos';
       });
     } catch (_) {}
   }
@@ -127,63 +102,45 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       _gettingLocation = true;
       _errorMessage = null;
     });
-
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-
       if (!serviceEnabled) {
         setState(() => _errorMessage = 'Activa el GPS para usar la app.');
         return;
       }
-
       var permission = await Geolocator.checkPermission();
-
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-
       if (permission == LocationPermission.denied) {
         setState(() => _errorMessage = 'Permiso de ubicación denegado.');
         return;
       }
-
       if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _errorMessage =
-          'El permiso de ubicación está bloqueado. Habilítalo desde ajustes.';
-        });
+        setState(() => _errorMessage =
+            'El permiso de ubicación está bloqueado. Habilítalo desde ajustes.');
         return;
       }
-
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
+          desiredAccuracy: LocationAccuracy.high);
       if (!mounted) return;
-
       setState(() => _position = position);
-
-      await _loadInitialNearbyProducts();
+      await _loadInitialNearbyStalls();
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
-
       if (!mounted) return;
-
       setState(() => _errorMessage = 'No se pudo obtener tu ubicación.');
     } finally {
-      if (mounted) {
-        setState(() => _gettingLocation = false);
-      }
+      if (mounted) setState(() => _gettingLocation = false);
     }
   }
 
-  Future<void> _loadInitialNearbyProducts() async {
+  Future<void> _loadInitialNearbyStalls() async {
     setState(() {
       _loading = true;
       _errorMessage = null;
-      _activeModeLabel = 'Productos cercanos';
+      _activeModeLabel = 'Puestos cercanos';
     });
-
     try {
       final response = await _api.get(
         '/market/open-stalls',
@@ -197,26 +154,19 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           if (_selectedCategory != 'Todos') 'category': _selectedCategory,
         },
       );
-
       final rawStalls =
           (response['stalls'] as List?)?.cast<dynamic>() ?? const [];
-
-      final stalls = rawStalls
-          .map((item) => (item as Map).cast<String, dynamic>())
-          .toList();
+      final stalls =
+          rawStalls.map((item) => (item as Map).cast<String, dynamic>()).toList();
 
       final items = <Map<String, dynamic>>[];
-
       for (final stall in stalls) {
         final stallId = (stall['stallId'] ?? '').toString();
         final stallName = (stall['name'] ?? 'Puesto').toString();
-
         final preview =
             (stall['productsPreview'] as List?)?.cast<dynamic>() ?? const [];
-
         for (final rawProduct in preview) {
           final product = (rawProduct as Map).cast<String, dynamic>();
-
           items.add({
             'stallId': stallId,
             'stallName': stallName,
@@ -230,9 +180,7 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           });
         }
       }
-
       if (!mounted) return;
-
       setState(() {
         _openStalls = stalls;
         _results = _sortResults(items);
@@ -241,52 +189,40 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       });
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
-
       if (!mounted) return;
-
       final message = UserFriendlyMessages.fromApiError(error);
-
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
-
       AppSnackbar.error(context, message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
-
       if (!mounted) return;
-
       final message = UserFriendlyMessages.fromGenericError(error);
-
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
-
       AppSnackbar.error(context, message);
     }
   }
 
   Future<void> _searchProducts() async {
     FocusScope.of(context).unfocus();
-
     final query = _searchController.text.trim();
-
     if (query.isEmpty) {
-      await _loadInitialNearbyProducts();
+      await _loadInitialNearbyStalls();
       return;
     }
-
     setState(() {
       _loading = true;
       _errorMessage = null;
       _results = [];
-      _activeModeLabel = 'Resultados para "$query"';
+      _activeModeLabel = '"$query"';
     });
-
     try {
       final response = await _api.get(
         '/market/products/search',
@@ -299,62 +235,44 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           if (_selectedCategory != 'Todos') 'category': _selectedCategory,
         },
       );
-
       final rawResults =
           (response['results'] as List?)?.cast<dynamic>() ?? const [];
-
-      final results = rawResults
-          .map((item) => (item as Map).cast<String, dynamic>())
-          .toList();
-
+      final results =
+          rawResults.map((item) => (item as Map).cast<String, dynamic>()).toList();
       if (!mounted) return;
-
       setState(() {
         _results = _sortResults(results);
         _loading = false;
         _hasLoadedOnce = true;
       });
-
       if (_results.isEmpty) {
         AppSnackbar.info(
-          context,
-          'No encontramos "$query" cerca. Intenta con otra palabra.',
-        );
+            context, 'No encontramos "$query" cerca. Intenta con otra palabra.');
       }
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
-
       if (!mounted) return;
-
       final message = UserFriendlyMessages.fromApiError(error);
-
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
-
       AppSnackbar.error(context, message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
-
       if (!mounted) return;
-
       final message = UserFriendlyMessages.fromGenericError(error);
-
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
-
       AppSnackbar.error(context, message);
     }
   }
 
-  Future<void> _openStallDetail({
-    required String stallId,
-  }) async {
+  Future<void> _openStallDetail({required String stallId}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -377,7 +295,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       AppSnackbar.info(context, 'Este resultado no tiene coordenadas.');
       return;
     }
-
     final point = LatLng(latitude, longitude);
 
     showModalBottomSheet<void>(
@@ -393,75 +310,58 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    stallName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  if (addressLabel.isNotEmpty)
-                    Text(
-                      addressLabel,
-                      style: TextStyle(
-                        color: AppThemeColors.subtitleColor(context),
-                      ),
-                    ),
+                  Text(stallName,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  if (addressLabel.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(addressLabel,
+                        style: TextStyle(
+                            color: AppThemeColors.subtitleColor(context),
+                            fontSize: 13)),
+                  ],
                   const SizedBox(height: 12),
                   Expanded(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: FlutterMap(
                         options: MapOptions(
-                          initialCenter: point,
-                          initialZoom: 16,
-                        ),
+                            initialCenter: point, initialZoom: 16),
                         children: [
                           TileLayer(
                             urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'encuentrame.bo',
                           ),
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: point,
-                                width: 48,
-                                height: 48,
-                                child: const Icon(
-                                  Icons.location_pin,
-                                  size: 42,
-                                ),
-                              ),
-                            ],
-                          ),
+                          MarkerLayer(markers: [
+                            Marker(
+                              point: point,
+                              width: 48,
+                              height: 48,
+                              child: const Icon(Icons.location_pin,
+                                  size: 42, color: AppColors.orangeAccent),
+                            ),
+                          ]),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await Clipboard.setData(
-                              ClipboardData(text: '$latitude,$longitude'),
-                            );
-
-                            if (!context.mounted) return;
-
-                            Navigator.pop(sheetContext);
-                            AppSnackbar.success(
-                              context,
-                              'Coordenadas copiadas.',
-                            );
-                          },
-                          icon: const Icon(Icons.copy_rounded),
-                          label: const Text('Copiar coordenadas'),
-                        ),
-                      ),
-                    ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: '$latitude,$longitude'));
+                        if (!context.mounted) return;
+                        Navigator.pop(sheetContext);
+                        AppSnackbar.success(context, 'Coordenadas copiadas.');
+                      },
+                      icon: const Icon(Icons.copy_rounded),
+                      label: const Text('Copiar coordenadas'),
+                    ),
                   ),
                 ],
               ),
@@ -472,304 +372,151 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  Widget _buildLocationPill() {
-    final hasLocation = _hasLocation;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: hasLocation
-            ? AppColors.statusOpen.withValues(alpha: 0.12)
-            : AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: hasLocation
-              ? AppColors.statusOpen.withValues(alpha: 0.35)
-              : Theme.of(context).dividerColor.withValues(alpha: 0.30),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            hasLocation
-                ? Icons.check_circle_rounded
-                : Icons.location_searching_rounded,
-            size: 16,
-            color: hasLocation ? AppColors.statusOpen : null,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            hasLocation ? 'Ubicación activa' : 'Ubicación pendiente',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: hasLocation ? AppColors.statusOpen : null,
-            ),
-          ),
-        ],
-      ),
+  void _showFiltersSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Filtros de búsqueda',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 20),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Categoría',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.category_outlined),
+                      ),
+                      items: _categories
+                          .map((item) => DropdownMenuItem<String>(
+                              value: item, child: Text(item)))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setSheetState(() {});
+                        setState(() => _selectedCategory = value);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<int>(
+                      value: _limit,
+                      decoration: const InputDecoration(
+                        labelText: 'Límite de resultados',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.format_list_numbered_rounded),
+                      ),
+                      items: const [10, 25, 50, 100]
+                          .map((item) => DropdownMenuItem<int>(
+                              value: item, child: Text(item.toString())))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setSheetState(() {});
+                        setState(() => _limit = value);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _showUserMarker,
+                      onChanged: (value) {
+                        setSheetState(() {});
+                        setState(() => _showUserMarker = value);
+                      },
+                      title: const Text('Mostrar mi ubicación en mapa'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () async {
+                          Navigator.pop(sheetContext);
+                          if (_hasQuery) {
+                            await _searchProducts();
+                          } else {
+                            await _loadInitialNearbyStalls();
+                          }
+                        },
+                        child: const Text('Aplicar filtros'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildResultsHeader(Color titleColor, Color subtitleColor) {
-    if (_loading && _results.isEmpty && _openStalls.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final total = _hasQuery ? _results.length : _openStalls.length;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.tune_rounded),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _activeModeLabel,
-                  style: TextStyle(
-                    color: titleColor,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$total resultado${total == 1 ? '' : 's'}',
-                  style: TextStyle(
-                    color: subtitleColor,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment<bool>(
-                value: false,
-                icon: Icon(Icons.view_list_rounded),
-                label: Text('Lista'),
-              ),
-              ButtonSegment<bool>(
-                value: true,
-                icon: Icon(Icons.map_outlined),
-                label: Text('Mapa'),
-              ),
-            ],
-            selected: {_mapMode},
-            onSelectionChanged: (values) {
-              setState(() => _mapMode = values.first);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilters(Color subtitleColor) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Categoría',
-                ),
-                items: _categories
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
-                    .toList(),
-                onChanged: (value) async {
-                  if (value == null) return;
-                  setState(() => _selectedCategory = value);
-
-                  if (_hasQuery) {
-                    await _searchProducts();
-                  } else {
-                    await _loadInitialNearbyProducts();
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 120,
-              child: DropdownButtonFormField<int>(
-                value: _limit,
-                decoration: const InputDecoration(
-                  labelText: 'Límite',
-                ),
-                items: const [10, 25, 50, 100]
-                    .map(
-                      (item) => DropdownMenuItem<int>(
-                    value: item,
-                    child: Text(item.toString()),
-                  ),
-                )
-                    .toList(),
-                onChanged: (value) async {
-                  if (value == null) return;
-                  setState(() => _limit = value);
-
-                  if (_hasQuery) {
-                    await _searchProducts();
-                  } else {
-                    await _loadInitialNearbyProducts();
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-        if (_mapMode) ...[
-          const SizedBox(height: 12),
-          SwitchListTile(
-            value: _showUserMarker,
-            onChanged: (value) => setState(() => _showUserMarker = value),
-            title: const Text('Mostrar mi ubicación'),
-            subtitle: Text(
-              'Activa o desactiva tu pin personal en el mapa.',
-              style: TextStyle(color: subtitleColor),
-            ),
-            contentPadding: EdgeInsets.zero,
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildEmptyState(Color subtitleColor) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_errorMessage != null) {
-      return Center(
-        child: Text(
-          _errorMessage!,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: subtitleColor),
-        ),
-      );
-    }
-
-    if (!_hasLoadedOnce) {
-      return Center(
-        child: Text(
-          'Cargando resultados...',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: subtitleColor),
-        ),
-      );
-    }
-
-    return Center(
-      child: Text(
-        _hasQuery
-            ? 'No encontramos productos para esta búsqueda.'
-            : 'No hay puestos abiertos cerca por ahora.',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: subtitleColor),
-      ),
-    );
-  }
+  // ─── Map view ──────────────────────────────────────────────────────────────
 
   Widget _buildMapView() {
-    if (_openStalls.isEmpty && !_hasLocation) {
-      return _buildEmptyState(AppThemeColors.subtitleColor(context));
-    }
+    final subtitleColor = AppThemeColors.subtitleColor(context);
+    if (_openStalls.isEmpty && !_hasLocation) return _buildEmptyState(subtitleColor);
 
-    final userPoint = _hasLocation
-        ? LatLng(_position!.latitude, _position!.longitude)
-        : null;
+    final userPoint =
+        _hasLocation ? LatLng(_position!.latitude, _position!.longitude) : null;
 
     LatLng initialCenter;
     if (_openStalls.isNotEmpty) {
       final firstLat = (_openStalls.first['lat'] as num?)?.toDouble();
       final firstLng = (_openStalls.first['lng'] as num?)?.toDouble();
-
       if (firstLat != null && firstLng != null) {
         initialCenter = LatLng(firstLat, firstLng);
-      } else if (userPoint != null) {
-        initialCenter = userPoint;
       } else {
-        initialCenter = const LatLng(-16.5, -68.15);
+        initialCenter = userPoint ?? const LatLng(-16.5, -68.15);
       }
-    } else if (userPoint != null) {
-      initialCenter = userPoint;
     } else {
-      initialCenter = const LatLng(-16.5, -68.15);
+      initialCenter = userPoint ?? const LatLng(-16.5, -68.15);
     }
 
     final markers = <Marker>[];
-
     for (final stall in _openStalls) {
       final lat = (stall['lat'] as num?)?.toDouble();
       final lng = (stall['lng'] as num?)?.toDouble();
-
       if (lat == null || lng == null) continue;
-
-      markers.add(
-        Marker(
-          point: LatLng(lat, lng),
-          width: 56,
-          height: 56,
-          child: GestureDetector(
-            onTap: () {
-              final stallId = (stall['stallId'] ?? '').toString();
-              if (stallId.isEmpty) return;
-
-              _openStallDetail(stallId: stallId);
-            },
-            child: Container(
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.location_on,
-                size: 40,
-              ),
-            ),
-          ),
+      markers.add(Marker(
+        point: LatLng(lat, lng),
+        width: 56,
+        height: 56,
+        child: GestureDetector(
+          onTap: () {
+            final stallId = (stall['stallId'] ?? '').toString();
+            if (stallId.isEmpty) return;
+            _openStallDetail(stallId: stallId);
+          },
+          child: const Icon(Icons.location_on, size: 40, color: AppColors.orangeAccent),
         ),
-      );
+      ));
     }
-
     if (_showUserMarker && userPoint != null) {
-      markers.add(
-        Marker(
-          point: userPoint,
-          width: 44,
-          height: 44,
-          child: const Icon(
-            Icons.my_location_rounded,
-            size: 28,
-          ),
-        ),
-      );
+      markers.add(Marker(
+        point: userPoint,
+        width: 44,
+        height: 44,
+        child: const Icon(Icons.my_location_rounded, size: 28, color: AppColors.primary),
+      ));
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(20),
       child: FlutterMap(
-        options: MapOptions(
-          initialCenter: initialCenter,
-          initialZoom: 14,
-        ),
+        options: MapOptions(initialCenter: initialCenter, initialZoom: 14),
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -781,326 +528,489 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  Widget _buildListView(Color titleColor, Color subtitleColor) {
-    if (_hasQuery) {
-      if (_results.isEmpty) {
-        return _buildEmptyState(subtitleColor);
-      }
+  // ─── Empty / loading state ─────────────────────────────────────────────────
 
-      return ListView.separated(
-        itemCount: _results.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, index) {
-          final result = _results[index];
-
-          final product = (result['product'] is Map)
-              ? (result['product'] as Map).cast<String, dynamic>()
-              : <String, dynamic>{};
-
-          final productName =
-          (product['display'] ?? product['canonical'] ?? 'Producto')
-              .toString();
-
-          final stallName = (result['stallName'] ?? 'Puesto').toString();
-          final stallCategory =
-          (result['stallCategory'] ?? '').toString().trim();
-          final addressLabel = (result['addressLabel'] ?? '').toString().trim();
-          final distanceLabel =
-          _formatDistance(result['distanceMeters'] as num?);
-          final stallId = (result['stallId'] ?? '').toString();
-
-          return Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+  Widget _buildEmptyState(Color subtitleColor) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wifi_off_rounded, size: 48, color: subtitleColor),
+              const SizedBox(height: 12),
+              Text(_errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: subtitleColor)),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _ensureLocation,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Reintentar'),
               ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (!_hasLoadedOnce) {
+      return Center(
+        child: Text('Cargando resultados...',
+            style: TextStyle(color: subtitleColor)),
+      );
+    }
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _hasQuery ? Icons.search_off_rounded : Icons.storefront_outlined,
+            size: 48,
+            color: subtitleColor,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _hasQuery
+                ? 'No encontramos productos para esta búsqueda.'
+                : 'No hay puestos abiertos cerca por ahora.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: subtitleColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Stall card (premium design) ──────────────────────────────────────────
+
+  Widget _buildStallCard(
+      Map<String, dynamic> stall, Color titleColor, Color subtitleColor) {
+    final stallId = (stall['stallId'] ?? '').toString();
+    final stallName = (stall['name'] ?? 'Puesto').toString();
+    final stallCategory = (stall['category'] ?? '').toString().trim();
+    final addressLabel = (stall['addressLabel'] ?? '').toString().trim();
+    final distanceLabel = _formatDistance(stall['distanceMeters'] as num?);
+
+    final preview =
+        (stall['productsPreview'] as List?)?.cast<dynamic>() ?? const [];
+    final previewText = preview
+        .map((item) {
+          final p = (item as Map).cast<String, dynamic>();
+          return (p['display'] ?? p['canonical'] ?? '').toString().trim();
+        })
+        .where((name) => name.isNotEmpty)
+        .take(5)
+        .join(' · ');
+
+    // Avatar letter
+    final initials = stallName.trim().isNotEmpty
+        ? stallName.trim()[0].toUpperCase()
+        : 'P';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: stallId.isEmpty ? null : () => _openStallDetail(stallId: stallId),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: AppThemeColors.inputFill(context),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.25),
             ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: stallId.isEmpty
-                  ? null
-                  : () => _openStallDetail(stallId: stallId),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      productName,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Avatar
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.blueNeon],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.storefront_outlined,
-                          size: 18,
-                          color: subtitleColor,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            stallName,
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: 13,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (distanceLabel.isNotEmpty)
-                          Text(
-                            distanceLabel,
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                      ],
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
                     ),
-                    if (stallCategory.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Chip(label: Text(stallCategory)),
-                    ],
-                    if (addressLabel.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Text info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Row(
                         children: [
-                          Icon(
-                            Icons.place_outlined,
-                            size: 18,
-                            color: subtitleColor,
-                          ),
-                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              addressLabel,
+                              stallName,
                               style: TextStyle(
-                                color: subtitleColor,
-                                fontSize: 13,
+                                color: titleColor,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
                               ),
-                              maxLines: 2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (distanceLabel.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                distanceLabel,
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (stallCategory.isNotEmpty || addressLabel.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          [
+                            if (stallCategory.isNotEmpty) stallCategory,
+                            if (addressLabel.isNotEmpty) addressLabel,
+                          ].join(' · '),
+                          style: TextStyle(color: subtitleColor, fontSize: 12),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (previewText.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Icon(Icons.inventory_2_outlined,
+                                size: 12, color: subtitleColor),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                previewText,
+                                style: TextStyle(
+                                    color: subtitleColor, fontSize: 11),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // Map icon button
+                GestureDetector(
+                  onTap: () => _showLocationSheet({
+                    'lat': stall['lat'],
+                    'lng': stall['lng'],
+                    'addressLabel': stall['addressLabel'],
+                    'stallName': stallName,
+                  }),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppThemeColors.inputFill(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.35),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.map_outlined,
+                        size: 18, color: subtitleColor),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Product card (search results) ────────────────────────────────────────
+
+  Widget _buildProductCard(Map<String, dynamic> result, Color titleColor,
+      Color subtitleColor) {
+    final product = (result['product'] is Map)
+        ? (result['product'] as Map).cast<String, dynamic>()
+        : <String, dynamic>{};
+
+    final productName =
+        (product['display'] ?? product['canonical'] ?? 'Producto').toString();
+    final stallName = (result['stallName'] ?? 'Puesto').toString();
+    final stallCategory = (result['stallCategory'] ?? '').toString().trim();
+    final addressLabel = (result['addressLabel'] ?? '').toString().trim();
+    final distanceLabel = _formatDistance(result['distanceMeters'] as num?);
+    final stallId = (result['stallId'] ?? '').toString();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: stallId.isEmpty ? null : () => _openStallDetail(stallId: stallId),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: AppThemeColors.inputFill(context),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Product icon
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.orangeAccent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.shopping_bag_outlined,
+                      size: 22, color: AppColors.orangeAccent),
+                ),
+                const SizedBox(width: 12),
+
+                // Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              productName,
+                              style: TextStyle(
+                                  color: titleColor,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (distanceLabel.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                distanceLabel,
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.storefront_outlined,
+                              size: 12, color: subtitleColor),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              [
+                                stallName,
+                                if (stallCategory.isNotEmpty) stallCategory,
+                                if (addressLabel.isNotEmpty) addressLabel,
+                              ].join(' · '),
+                              style:
+                                  TextStyle(color: subtitleColor, fontSize: 12),
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.tonalIcon(
-                            onPressed: stallId.isEmpty
-                                ? null
-                                : () => _openStallDetail(stallId: stallId),
-                            icon: const Icon(Icons.store_mall_directory_outlined),
-                            label: const Text('Ver puesto'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _showLocationSheet(result),
-                            icon: const Icon(Icons.map_outlined),
-                            label: const Text('Ubicación'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
-      );
-    }
+                const SizedBox(width: 6),
 
-    if (_openStalls.isEmpty) {
-      return _buildEmptyState(subtitleColor);
-    }
-
-    return ListView.separated(
-      itemCount: _openStalls.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, index) {
-        final stall = _openStalls[index];
-
-        final stallId = (stall['stallId'] ?? '').toString();
-        final stallName = (stall['name'] ?? 'Puesto').toString();
-        final stallCategory = (stall['category'] ?? '').toString().trim();
-        final stallDescription = (stall['description'] ?? '').toString().trim();
-        final addressLabel = (stall['addressLabel'] ?? '').toString().trim();
-        final distanceLabel =
-        _formatDistance(stall['distanceMeters'] as num?);
-
-        final preview =
-            (stall['productsPreview'] as List?)?.cast<dynamic>() ?? const [];
-
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+                GestureDetector(
+                  onTap: () => _showLocationSheet(result),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppThemeColors.inputFill(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.35),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.map_outlined,
+                        size: 18, color: subtitleColor),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: stallId.isEmpty
-                ? null
-                : () => _openStallDetail(stallId: stallId),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    stallName,
-                    style: TextStyle(
-                      color: titleColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      if (stallCategory.isNotEmpty) Chip(label: Text(stallCategory)),
-                      if (distanceLabel.isNotEmpty) Chip(label: Text(distanceLabel)),
-                    ],
-                  ),
-                  if (stallDescription.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      stallDescription,
-                      style: TextStyle(
-                        color: subtitleColor,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                  if (addressLabel.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.place_outlined,
-                          size: 18,
-                          color: subtitleColor,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            addressLabel,
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: 13,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (preview.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Productos visibles',
-                      style: TextStyle(
-                        color: titleColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: preview.map((item) {
-                        final product =
-                        (item as Map).cast<String, dynamic>();
-                        final productName =
-                        (product['display'] ?? product['canonical'] ?? '')
-                            .toString()
-                            .trim();
-
-                        if (productName.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return Chip(label: Text(productName));
-                      }).toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: stallId.isEmpty
-                              ? null
-                              : () => _openStallDetail(stallId: stallId),
-                          icon: const Icon(Icons.store_mall_directory_outlined),
-                          label: const Text('Ver puesto'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showLocationSheet({
-                            'lat': stall['lat'],
-                            'lng': stall['lng'],
-                            'addressLabel': stall['addressLabel'],
-                            'stallName': stallName,
-                          }),
-                          icon: const Icon(Icons.map_outlined),
-                          label: const Text('Ubicación'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+        ),
+      ),
     );
   }
+
+  // ─── List view ─────────────────────────────────────────────────────────────
+
+  Widget _buildListView(Color titleColor, Color subtitleColor) {
+    if (_hasQuery) {
+      if (_results.isEmpty) return _buildEmptyState(subtitleColor);
+      return ListView.separated(
+        itemCount: _results.length,
+        padding: EdgeInsets.zero,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (_, i) =>
+            _buildProductCard(_results[i], titleColor, subtitleColor),
+      );
+    }
+    if (_openStalls.isEmpty) return _buildEmptyState(subtitleColor);
+    return ListView.separated(
+      itemCount: _openStalls.length,
+      padding: EdgeInsets.zero,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, i) =>
+          _buildStallCard(_openStalls[i], titleColor, subtitleColor),
+    );
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final shell = MainShell.of(context);
-
     final titleColor = AppThemeColors.titleColor(context);
     final subtitleColor = AppThemeColors.subtitleColor(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final total = _hasQuery ? _results.length : _openStalls.length;
 
     return Scaffold(
+      // ── Gradient AppBar ──────────────────────────────────────────────────
       appBar: AppBar(
-        title: const Text('Market'),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isDark
+                  ? [AppColors.blueSurface, AppColors.primaryDark]
+                  : [AppColors.primary, AppColors.blueNeon],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        title: const Text(
+          'Market',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MarketHowItWorksPage(),
+          // Location indicator
+          if (_hasLocation)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(99),
                 ),
-              );
-            },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF69F0AE),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'GPS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_gettingLocation)
+            const Padding(
+              padding: EdgeInsets.only(right: 8, left: 4),
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                ),
+              ),
+            ),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MarketHowItWorksPage())),
             icon: const Icon(Icons.info_outline_rounded),
             tooltip: 'Cómo funciona',
           ),
@@ -1111,9 +1021,8 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           ),
         ],
       ),
+
       body: Container(
-        width: double.infinity,
-        height: double.infinity,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -1121,106 +1030,271 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
             colors: AppThemeColors.backgroundGradient(context),
           ),
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Encuentra vendedores y productos cerca de ti',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: titleColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Puedes explorar en lista o mapa, filtrar por categoría y decidir cuántos puestos cargar.',
-                  style: TextStyle(
-                    color: subtitleColor,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    _buildLocationPill(),
-                    const Spacer(),
-                    IconButton(
-                      onPressed:
-                      (_gettingLocation || _loading) ? null : _ensureLocation,
-                      icon: const Icon(Icons.my_location_rounded),
-                      tooltip: 'Actualizar ubicación',
+        child: Column(
+          children: [
+            // ── Search bar ────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: TextField(
+                        controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _searchProducts(),
+                        style: TextStyle(fontSize: 14, color: titleColor),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar productos o puestos...',
+                          hintStyle:
+                              TextStyle(color: subtitleColor, fontSize: 14),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                          suffixIcon: _searchController.text.trim().isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {});
+                                    _loadInitialNearbyStalls();
+                                  },
+                                  icon: const Icon(Icons.close_rounded,
+                                      size: 18),
+                                ),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                                color: AppColors.primary, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: AppThemeColors.inputFill(context),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
                     ),
-                    IconButton(
-                      onPressed:
-                      (_gettingLocation || _loading) ? null : _loadCategories,
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: 'Actualizar',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _searchController,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _searchProducts(),
-                  decoration: InputDecoration(
-                    labelText: 'Buscar producto',
-                    hintText: 'Ejemplo: pipocas, api, poleras',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _searchController.text.trim().isEmpty
+                  ),
+                  const SizedBox(width: 8),
+                  // Search button
+                  _SquareButton(
+                    onTap: (_loading || _gettingLocation)
                         ? null
-                        : IconButton(
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {});
-                        _loadInitialNearbyProducts();
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Limpiar',
-                    ),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                _buildFilters(subtitleColor),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed:
-                    (_loading || _gettingLocation) ? null : _searchProducts,
-                    icon: _loading
+                        : _searchProducts,
+                    tooltip: _hasQuery ? 'Buscar' : 'Ver cercanos',
+                    color: AppColors.orangeAccent,
+                    child: _loading
                         ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
                         : Icon(
-                      _hasQuery
-                          ? Icons.search_rounded
-                          : Icons.near_me_rounded,
-                    ),
-                    label: Text(
-                      _loading
-                          ? 'Cargando...'
-                          : (_hasQuery ? 'Buscar' : 'Ver cercanos'),
+                            _hasQuery
+                                ? Icons.search_rounded
+                                : Icons.near_me_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Filter button
+                  _SquareButton(
+                    onTap: _showFiltersSheet,
+                    tooltip: 'Filtros',
+                    color: _selectedCategory != 'Todos'
+                        ? AppColors.primary
+                        : null,
+                    outlined: _selectedCategory == 'Todos',
+                    child: Icon(
+                      Icons.tune_rounded,
+                      size: 22,
+                      color: _selectedCategory != 'Todos'
+                          ? Colors.white
+                          : subtitleColor,
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildResultsHeader(titleColor, subtitleColor),
-                Expanded(
-                  child: _mapMode
-                      ? _buildMapView()
-                      : _buildListView(titleColor, subtitleColor),
-                ),
-              ],
+                ],
+              ),
             ),
+
+            // ── Results meta bar ──────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _activeModeLabel,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (_hasLoadedOnce && !_loading)
+                          Text(
+                            '$total resultado${total == 1 ? '' : 's'}',
+                            style: TextStyle(
+                                color: subtitleColor, fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Refresh location
+                  IconButton(
+                    onPressed: (_gettingLocation || _loading)
+                        ? null
+                        : _ensureLocation,
+                    icon: Icon(Icons.my_location_rounded,
+                        size: 20, color: subtitleColor),
+                    tooltip: 'Actualizar ubicación',
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const SizedBox(width: 4),
+                  // Toggle lista / mapa — compact pill
+                  Container(
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppThemeColors.inputFill(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ToggleTab(
+                          icon: Icons.view_list_rounded,
+                          active: !_mapMode,
+                          onTap: () => setState(() => _mapMode = false),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: Theme.of(context)
+                              .dividerColor
+                              .withValues(alpha: 0.3),
+                        ),
+                        _ToggleTab(
+                          icon: Icons.map_outlined,
+                          active: _mapMode,
+                          onTap: () => setState(() => _mapMode = true),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Results area ──────────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+                child: _mapMode
+                    ? _buildMapView()
+                    : _buildListView(titleColor, subtitleColor),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+class _SquareButton extends StatelessWidget {
+  const _SquareButton({
+    required this.child,
+    required this.onTap,
+    this.tooltip,
+    this.color,
+    this.outlined = false,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final String? tooltip;
+  final Color? color;
+  final bool outlined;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = color ?? Colors.transparent;
+
+    return Tooltip(
+      message: tooltip ?? '',
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: onTap == null ? bg.withValues(alpha: 0.4) : bg,
+            borderRadius: BorderRadius.circular(14),
+            border: outlined
+                ? Border.all(
+                    color: Theme.of(context)
+                        .dividerColor
+                        .withValues(alpha: 0.4),
+                  )
+                : null,
           ),
+          alignment: Alignment.center,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleTab extends StatelessWidget {
+  const _ToggleTab({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 40,
+        height: 34,
+        decoration: BoxDecoration(
+          color: active ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 18,
+          color: active ? AppColors.primary : AppThemeColors.subtitleColor(context),
         ),
       ),
     );
