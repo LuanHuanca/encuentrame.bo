@@ -26,10 +26,11 @@ async function searchProductsNear({ event, currentUser }) {
   return ok(data);
 }
 
-async function getPublicStallDetail({ currentUser, stallId }) {
+async function getPublicStallDetail({ event, currentUser, stallId }) {
   const data = await marketService.getPublicStallDetail({
     currentUser,
     stallId,
+    query: event?.queryStringParameters || {},
   });
 
   return ok(data);

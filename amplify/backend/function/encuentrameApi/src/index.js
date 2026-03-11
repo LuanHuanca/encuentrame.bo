@@ -1,4 +1,4 @@
-'use strict';
+    'use strict';
 
 const { route } = require('./app/router');
 const { toErrorResponse } = require('./shared/http/response');

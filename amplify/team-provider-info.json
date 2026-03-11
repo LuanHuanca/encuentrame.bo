@@ -21,7 +21,7 @@
       "function": {
         "encuentrameApi": {
           "deploymentBucketName": "amplify-encuentramebo-dev-f3550-deployment",
-          "s3Key": "amplify-builds/encuentrameApi-307470487550682f6657-build.zip",
+          "s3Key": "amplify-builds/encuentrameApi-506e5a52456138524b55-build.zip",
           "usersTable": "users-dev",
           "stallsTable": "stalls-dev",
           "openinglogsTable": "openinglogs-dev",

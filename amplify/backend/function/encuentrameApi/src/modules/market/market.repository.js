@@ -1,6 +1,10 @@
 'use strict';
 
-const { QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const {
+  QueryCommand,
+  GetCommand,
+  ScanCommand,
+} = require('@aws-sdk/lib-dynamodb');
 const { documentClient } = require('../../integrations/dynamodb/dynamo-client');
 const { env } = require('../../shared/config/env');
 
@@ -8,20 +12,36 @@ function pkStall(stallId) {
   return `STALL#${stallId}`;
 }
 
-async function listOpenStallProfiles(limit = 400) {
+function isOpenProfile(item) {
+  const value = item?.currentOpen;
+
+  if (value === true || value === 1 || value === '1') {
+    return true;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === 'open';
+  }
+
+  return false;
+}
+
+async function listStallProfiles(limit = 400) {
   const items = [];
   let exclusiveStartKey;
 
   while (items.length < limit) {
     const page = await documentClient.send(
-      new QueryCommand({
+      new ScanCommand({
         TableName: env.STALLS_TABLE,
-        IndexName: 'gsi1',
-        KeyConditionExpression: 'gsi1pk = :partition',
-        ExpressionAttributeValues: {
-          ':partition': 'OPEN',
+        FilterExpression: '#sk = :profile',
+        ExpressionAttributeNames: {
+          '#sk': 'sk',
         },
-        ScanIndexForward: false,
+        ExpressionAttributeValues: {
+          ':profile': 'PROFILE',
+        },
         Limit: Math.min(100, limit - items.length),
         ExclusiveStartKey: exclusiveStartKey,
       })
@@ -30,10 +50,21 @@ async function listOpenStallProfiles(limit = 400) {
     items.push(...(page.Items || []));
     exclusiveStartKey = page.LastEvaluatedKey;
 
-    if (!exclusiveStartKey) break;
+    if (!exclusiveStartKey) {
+      break;
+    }
   }
 
-  return items;
+  return items.slice(0, limit);
+}
+
+async function listOpenStallProfiles(limit = 400) {
+  const profiles = await listStallProfiles(limit);
+  return profiles.filter(isOpenProfile);
+}
+
+async function listAllStallProfiles(limit = 400) {
+  return listStallProfiles(limit);
 }
 
 async function getStallProfile(stallId) {
@@ -69,6 +100,7 @@ async function listProductsByStallId(stallId, limit = 250) {
 
 module.exports = {
   listOpenStallProfiles,
+  listAllStallProfiles,
   getStallProfile,
   listProductsByStallId,
 };

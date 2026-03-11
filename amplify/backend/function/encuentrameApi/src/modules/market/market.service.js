@@ -154,6 +154,50 @@ function normalizeCategory(value) {
   return normalizeText(value);
 }
 
+function mapProduct(item) {
+  return {
+    productId: item.productId,
+    display: item.display,
+    canonical: item.canonical,
+    category: item.category ?? null,
+    description: item.description ?? null,
+    price: item.price ?? null,
+    active: item.active ?? true,
+    lastQty: item.lastQty ?? null,
+    lastSeenAt: item.lastSeenAt ?? null,
+  };
+}
+
+function buildOpeningFromProfile(profile) {
+  if (!profile || !profile.currentOpen) {
+    return null;
+  }
+
+  return {
+    status: 'OPEN',
+    openedAt:
+      profile.currentOpenedAt ??
+      profile.openedAt ??
+      profile.updatedAt ??
+      null,
+    lat: profile.currentLat ?? null,
+    lng: profile.currentLng ?? null,
+    accuracy: profile.currentAccuracy ?? null,
+    addressLabel: profile.currentAddressLabel ?? null,
+    stallPhotoKey:
+      profile.currentStallPhotoKey ??
+      profile.stallPhotoKey ??
+      profile.coverPhotoKey ??
+      null,
+    productsPhotoKey:
+      profile.currentProductsPhotoKey ??
+      profile.productsPhotoKey ??
+      null,
+    inventoryItems: profile.currentInventoryItems ?? [],
+    inventorySuggestions: profile.currentInventorySuggestions ?? [],
+  };
+}
+
 async function listCategories(currentUser) {
   requireAuthenticated(currentUser);
 
@@ -161,7 +205,7 @@ async function listCategories(currentUser) {
     return mapper.toCategoryResponse([]);
   }
 
-  const profiles = await repository.listOpenStallProfiles(400);
+  const profiles = await repository.listAllStallProfiles(400);
 
   const categories = unique(
     profiles
@@ -199,7 +243,7 @@ async function listOpenStallsNear({ currentUser, query }) {
 
   const profiles = await repository.listOpenStallProfiles(400);
 
-  let stalls = profiles
+  const stalls = profiles
     .map((profile) => {
       const stallLat = toNumber(profile.currentLat);
       const stallLng = toNumber(profile.currentLng);
@@ -229,12 +273,17 @@ async function listOpenStallsNear({ currentUser, query }) {
         stallId,
         name,
         category: itemCategory,
+        description: String(profile.description || '').trim(),
         isOpen: !!profile.currentOpen,
         lat: stallLat,
         lng: stallLng,
         addressLabel: profile.currentAddressLabel ?? null,
         distanceMeters: Math.round(distanceMeters),
-        coverPhotoKey: profile.coverPhotoKey ?? null,
+        coverPhotoKey:
+          profile.coverPhotoKey ??
+          profile.currentStallPhotoKey ??
+          profile.stallPhotoKey ??
+          null,
         nameScore,
       };
     })
@@ -259,15 +308,7 @@ async function listOpenStallsNear({ currentUser, query }) {
       const items = await repository.listProductsByStallId(stall.stallId, 80);
 
       const productsPreview = items
-        .map((item) => ({
-          productId: item.productId,
-          display: item.display,
-          canonical: item.canonical,
-          price: item.price ?? null,
-          active: item.active ?? true,
-          lastQty: item.lastQty ?? null,
-          lastSeenAt: item.lastSeenAt ?? null,
-        }))
+        .map(mapProduct)
         .filter((item) => item.active === true)
         .slice(0, productsLimit);
 
@@ -320,22 +361,13 @@ async function searchProductsNear({ currentUser, query }) {
 
     const matches = items
       .map((item) => {
-        const product = {
-          productId: item.productId,
-          display: item.display,
-          canonical: item.canonical,
-          price: item.price ?? null,
-          active: item.active ?? true,
-          lastQty: item.lastQty ?? null,
-          lastSeenAt: item.lastSeenAt ?? null,
-        };
-
+        const product = mapProduct(item);
         const matchScore = computeProductMatchScore(product, q);
 
         return {
           stallId: stall.stallId,
           stallName: stall.name,
-          category: stall.category ?? '',
+          stallCategory: stall.category ?? '',
           addressLabel: stall.addressLabel ?? null,
           lat: stall.lat,
           lng: stall.lng,
@@ -375,7 +407,7 @@ async function searchProductsNear({ currentUser, query }) {
   });
 }
 
-async function getPublicStallDetail({ currentUser, stallId }) {
+async function getPublicStallDetail({ currentUser, stallId, query }) {
   requireAuthenticated(currentUser);
 
   if (!env.STALLS_TABLE) {
@@ -402,16 +434,25 @@ async function getPublicStallDetail({ currentUser, stallId }) {
     : [];
 
   const activeProducts = products
-    .map((item) => ({
-      productId: item.productId,
-      display: item.display,
-      canonical: item.canonical,
-      price: item.price ?? null,
-      active: item.active ?? true,
-      lastQty: item.lastQty ?? null,
-      lastSeenAt: item.lastSeenAt ?? null,
-    }))
+    .map(mapProduct)
     .filter((item) => item.active === true);
+
+  const stallLat = toNumber(profile.currentLat);
+  const stallLng = toNumber(profile.currentLng);
+  const userLat = toNumber(query?.lat);
+  const userLng = toNumber(query?.lng);
+
+  let distanceMeters = null;
+  if (
+    stallLat !== null &&
+    stallLng !== null &&
+    userLat !== null &&
+    userLng !== null
+  ) {
+    distanceMeters = Math.round(
+      haversineMeters(userLat, userLng, stallLat, stallLng)
+    );
+  }
 
   return mapper.toPublicStallDetailResponse({
     stall: {
@@ -420,13 +461,19 @@ async function getPublicStallDetail({ currentUser, stallId }) {
       category: profile.category || '',
       description: profile.description || '',
       isOpen: !!profile.currentOpen,
-      lat: profile.currentLat ?? null,
-      lng: profile.currentLng ?? null,
+      lat: stallLat,
+      lng: stallLng,
       addressLabel: profile.currentAddressLabel ?? null,
-      coverPhotoKey: profile.coverPhotoKey ?? null,
+      distanceMeters,
+      coverPhotoKey:
+        profile.coverPhotoKey ??
+        profile.currentStallPhotoKey ??
+        profile.stallPhotoKey ??
+        null,
       vendorUserId: profile.vendorUserId ?? null,
       updatedAt: profile.updatedAt ?? null,
     },
+    opening: buildOpeningFromProfile(profile),
     products: activeProducts,
   });
 }
@@ -449,13 +496,7 @@ async function listPublicStallProducts({ currentUser, stallId, query }) {
 
   const products = items
     .map((item) => ({
-      productId: item.productId,
-      canonical: item.canonical,
-      display: item.display,
-      price: item.price ?? null,
-      active: item.active ?? true,
-      lastQty: item.lastQty ?? null,
-      lastSeenAt: item.lastSeenAt ?? null,
+      ...mapProduct(item),
       matchScore: q ? computeProductMatchScore(item, q) : 1,
     }))
     .filter((item) => item.active === true)

@@ -6,8 +6,6 @@ import '../features/auth/presentation/pages/forgot_password_page.dart';
 import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/pages/reset_password_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
-import '../features/market/presentation/pages/market_stall_detail_page.dart';
-import '../features/stalls/presentation/pages/stall_products_page.dart';
 import 'shell/main_shell.dart';
 
 class AppRoutes {
@@ -22,9 +20,6 @@ class AppRoutes {
   static const String confirmSignup = '/confirm-signup';
   static const String forgotPassword = '/forgot-password';
   static const String resetPassword = '/reset-password';
-
-  static const String marketStallDetail = '/market/stall-detail';
-  static const String stallProducts = '/stall-products';
 }
 
 class AppRouter {
@@ -99,34 +94,8 @@ class AppRouter {
           ),
         );
 
-      case AppRoutes.marketStallDetail:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => MarketStallDetailPage(
-            stallId: (args['stallId'] as String?) ?? '',
-            userLat: args['userLat'] as double?,
-            userLng: args['userLng'] as double?,
-          ),
-        );
-
-      case AppRoutes.stallProducts:
-        final args = settings.arguments as Map<String, dynamic>? ?? {};
-
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => StallProductsPage(
-            stallId: (args['stallId'] as String?) ?? '',
-            stallName: (args['stallName'] as String?) ?? '',
-          ),
-        );
-
       default:
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => LoginPage(auth: AppDependencies.auth),
-        );
+        return null;
     }
   }
 }

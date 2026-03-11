@@ -24,9 +24,10 @@ function toProductSearchResponse({ q, radiusKm, results }) {
   };
 }
 
-function toPublicStallDetailResponse({ stall, products }) {
+function toPublicStallDetailResponse({ stall, opening, products }) {
   return {
     stall,
+    opening,
     products,
     countProducts: products.length,
   };

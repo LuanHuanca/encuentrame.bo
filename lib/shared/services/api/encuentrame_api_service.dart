@@ -1,15 +1,6 @@
 import '../../../core/constants/api_constants.dart';
 import '../../api/rest_client.dart';
 
-/// High-level API service for the MVP.
-///
-/// This version is intentionally minimal:
-/// - health check
-/// - public buyer search
-/// - public stall products
-///
-/// Orders, cart, bootstrap flows and other e-commerce features were removed
-/// because they are outside the current MVP.
 class EncuentrameApiService {
   EncuentrameApiService({RestClient? client})
       : _client = client ?? RestClient();
@@ -20,27 +11,37 @@ class EncuentrameApiService {
     return _client.get(ApiConstants.health);
   }
 
+  Future<Map<String, dynamic>> getMarketCategories() {
+    return _client.get(ApiConstants.marketCategories);
+  }
+
   Future<Map<String, dynamic>> listOpenStallsNear({
-    required double lat,
-    required double lng,
+    double? lat,
+    double? lng,
     double radiusKm = 10,
-    int limit = 30,
-    String? query,
+    int limit = 50,
     bool includeProducts = false,
-    int productsLimit = 6,
+    int productsLimit = 20,
+    String? category,
   }) {
     final queryParameters = <String, String>{
-      'lat': lat.toString(),
-      'lng': lng.toString(),
       'radiusKm': radiusKm.toString(),
       'limit': limit.toString(),
       'includeProducts': includeProducts ? '1' : '0',
       'productsLimit': productsLimit.toString(),
     };
 
-    final trimmedQuery = query?.trim() ?? '';
-    if (trimmedQuery.isNotEmpty) {
-      queryParameters['q'] = trimmedQuery;
+    if (lat != null) {
+      queryParameters['lat'] = lat.toString();
+    }
+
+    if (lng != null) {
+      queryParameters['lng'] = lng.toString();
+    }
+
+    final trimmedCategory = category?.trim() ?? '';
+    if (trimmedCategory.isNotEmpty && trimmedCategory != 'Todos') {
+      queryParameters['category'] = trimmedCategory;
     }
 
     return _client.get(
@@ -49,44 +50,160 @@ class EncuentrameApiService {
     );
   }
 
-  Future<Map<String, dynamic>> listStallProductsPublic({
-    required String stallId,
-    String? query,
-    int limit = 50,
-  }) {
-    final queryParameters = <String, String>{
-      'limit': limit.toString(),
-    };
-
-    final trimmedQuery = query?.trim() ?? '';
-    if (trimmedQuery.isNotEmpty) {
-      queryParameters['q'] = trimmedQuery;
-    }
-
-    return _client.get(
-      ApiConstants.marketStallProducts(stallId),
-      queryParameters: queryParameters,
-    );
-  }
-
   Future<Map<String, dynamic>> searchProductsNear({
-    required double lat,
-    required double lng,
+    double? lat,
+    double? lng,
     required String query,
     double radiusKm = 10,
-    int limit = 30,
+    int limit = 50,
+    String? category,
   }) {
     final queryParameters = <String, String>{
-      'lat': lat.toString(),
-      'lng': lng.toString(),
       'q': query.trim(),
       'radiusKm': radiusKm.toString(),
       'limit': limit.toString(),
     };
 
+    if (lat != null) {
+      queryParameters['lat'] = lat.toString();
+    }
+
+    if (lng != null) {
+      queryParameters['lng'] = lng.toString();
+    }
+
+    final trimmedCategory = category?.trim() ?? '';
+    if (trimmedCategory.isNotEmpty && trimmedCategory != 'Todos') {
+      queryParameters['category'] = trimmedCategory;
+    }
+
     return _client.get(
       ApiConstants.marketSearchProducts,
       queryParameters: queryParameters,
+    );
+  }
+
+  Future<Map<String, dynamic>> getMarketStallDetail({
+    required String stallId,
+    double? userLat,
+    double? userLng,
+  }) {
+    final queryParameters = <String, String>{};
+
+    if (userLat != null) {
+      queryParameters['lat'] = userLat.toString();
+    }
+
+    if (userLng != null) {
+      queryParameters['lng'] = userLng.toString();
+    }
+
+    return _client.get(
+      ApiConstants.marketStallDetail(stallId),
+      queryParameters:
+      queryParameters.isEmpty ? null : queryParameters,
+    );
+  }
+
+  Future<Map<String, dynamic>> listMyStalls() {
+    return _client.get(ApiConstants.stalls);
+  }
+
+  Future<Map<String, dynamic>> createStall({
+    required String name,
+    String? category,
+    String? description,
+  }) {
+    return _client.post(
+      ApiConstants.stalls,
+      {
+        'name': name.trim(),
+        'category': (category ?? '').trim().isEmpty ? null : category?.trim(),
+        'description': (description ?? '').trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> updateStall({
+    required String stallId,
+    required String name,
+    String? category,
+    String? description,
+  }) {
+    return _client.put(
+      ApiConstants.stallById(stallId),
+      {
+        'name': name.trim(),
+        'category': (category ?? '').trim().isEmpty ? null : category?.trim(),
+        'description': (description ?? '').trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> deleteStall(String stallId) {
+    return _client.del(ApiConstants.stallById(stallId));
+  }
+
+  Future<Map<String, dynamic>> openStall({
+    required String stallId,
+    required String stallName,
+    required double lat,
+    required double lng,
+    required double accuracy,
+    required String stallPhotoKey,
+    required String productsPhotoKey,
+    required String inventoryText,
+  }) {
+    return _client.post(
+      ApiConstants.stallsOpen,
+      {
+        'stallId': stallId,
+        'stallName': stallName,
+        'lat': lat,
+        'lng': lng,
+        'accuracy': accuracy,
+        'stallPhotoKey': stallPhotoKey,
+        'productsPhotoKey': productsPhotoKey,
+        'inventoryText': inventoryText.trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> closeStall(String stallId) {
+    return _client.post(ApiConstants.stallClose(stallId), {});
+  }
+
+  Future<Map<String, dynamic>> getCurrentStallOpening(String stallId) {
+    return _client.get(ApiConstants.stallCurrent(stallId));
+  }
+
+  Future<Map<String, dynamic>> getStallProducts(String stallId) {
+    return _client.get(ApiConstants.stallProducts(stallId));
+  }
+
+  Future<Map<String, dynamic>> updateStallProduct({
+    required String stallId,
+    required String productId,
+    required Map<String, dynamic> payload,
+  }) {
+    return _client.put(
+      ApiConstants.stallProductById(stallId, productId),
+      payload,
+    );
+  }
+
+  Future<Map<String, dynamic>> getMyProfile() {
+    return _client.get(ApiConstants.userMe);
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile({
+    required String name,
+  }) {
+    return _client.put(
+      ApiConstants.userMe,
+      {
+        'name': name.trim(),
+      },
     );
   }
 }

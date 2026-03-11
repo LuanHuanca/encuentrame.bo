@@ -26,10 +26,6 @@ class ApiClientException implements Exception {
   }
 }
 
-/// REST client for the API Gateway configured in Amplify.
-///
-/// The backend is mounted under `/api`, so every relative path is normalized
-/// to start with `/api/...`.
 class RestClient {
   static const String apiName = 'apic45634fb';
 
@@ -61,11 +57,7 @@ class RestClient {
       final response = await operation.response;
       return _handleResponse(response.statusCode, response.decodeBody());
     } on ApiException catch (error) {
-      throw ApiClientException(
-        error.message,
-        code: error.recoverySuggestion,
-        details: error.underlyingException?.toString(),
-      );
+      throw _mapApiException(error);
     }
   }
 
@@ -83,11 +75,7 @@ class RestClient {
       final response = await operation.response;
       return _handleResponse(response.statusCode, response.decodeBody());
     } on ApiException catch (error) {
-      throw ApiClientException(
-        error.message,
-        code: error.recoverySuggestion,
-        details: error.underlyingException?.toString(),
-      );
+      throw _mapApiException(error);
     }
   }
 
@@ -105,11 +93,7 @@ class RestClient {
       final response = await operation.response;
       return _handleResponse(response.statusCode, response.decodeBody());
     } on ApiException catch (error) {
-      throw ApiClientException(
-        error.message,
-        code: error.recoverySuggestion,
-        details: error.underlyingException?.toString(),
-      );
+      throw _mapApiException(error);
     }
   }
 
@@ -123,11 +107,65 @@ class RestClient {
       final response = await operation.response;
       return _handleResponse(response.statusCode, response.decodeBody());
     } on ApiException catch (error) {
-      throw ApiClientException(
-        error.message,
-        code: error.recoverySuggestion,
-        details: error.underlyingException?.toString(),
-      );
+      throw _mapApiException(error);
+    }
+  }
+
+  ApiClientException _mapApiException(ApiException error) {
+    final rawDetails = [
+      error.message,
+      error.recoverySuggestion,
+      error.underlyingException?.toString(),
+    ].whereType<String>().join(' | ');
+
+    final statusCode = _extractStatusCode(rawDetails);
+    final parsedPayload = _extractJsonPayload(rawDetails);
+
+    return ApiClientException(
+      parsedPayload?['message']?.toString() ??
+          error.message,
+      statusCode: statusCode,
+      code: parsedPayload?['code']?.toString() ??
+          error.recoverySuggestion,
+      details: parsedPayload?['details']?.toString() ?? rawDetails,
+    );
+  }
+
+  int? _extractStatusCode(String raw) {
+    final match = RegExp(r'(\b4\d{2}\b|\b5\d{2}\b)').firstMatch(raw);
+    if (match == null) return null;
+    return int.tryParse(match.group(0)!);
+  }
+
+  Map<String, dynamic>? _extractJsonPayload(String raw) {
+    final start = raw.indexOf('{');
+    final end = raw.lastIndexOf('}');
+
+    if (start == -1 || end == -1 || end <= start) return null;
+
+    final jsonCandidate = raw.substring(start, end + 1);
+
+    try {
+      final decoded = jsonDecode(jsonCandidate);
+
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['error'] is Map) {
+          return (decoded['error'] as Map).cast<String, dynamic>();
+        }
+        return decoded;
+      }
+
+      if (decoded is Map) {
+        final casted = decoded.cast<String, dynamic>();
+        if (casted['error'] is Map) {
+          return (casted['error'] as Map).cast<String, dynamic>();
+        }
+        return casted;
+      }
+
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -135,8 +173,9 @@ class RestClient {
     final json = _parseJsonMap(rawBody);
 
     if (statusCode >= 400) {
-      final error =
-      (json['error'] is Map) ? (json['error'] as Map).cast<String, dynamic>() : null;
+      final error = (json['error'] is Map)
+          ? (json['error'] as Map).cast<String, dynamic>()
+          : null;
 
       throw ApiClientException(
         error?['message']?.toString() ?? 'HTTP $statusCode',
@@ -146,8 +185,6 @@ class RestClient {
       );
     }
 
-    // Defensive fallback in case the backend responds with 200 but embeds
-    // an error payload.
     if (json['error'] is Map) {
       final error = (json['error'] as Map).cast<String, dynamic>();
 
