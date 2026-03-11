@@ -1,32 +1,21 @@
 'use strict';
 
-const { route } = require('./router');
-const { corsHeaders } = require('./util/http');
+const { route } = require('./app/router');
+const { toErrorResponse } = require('./shared/http/response');
+const { logger } = require('./shared/logging/logger');
 
 exports.handler = async (event) => {
   try {
     return await route(event);
   } catch (error) {
-    console.log('UNHANDLED_ERROR', {
+    logger.error('UNHANDLED_ERROR', {
       name: error?.name,
       message: error?.message,
       stack: error?.stack,
-      status: error?.$metadata?.httpStatusCode,
+      statusCode: error?.statusCode,
+      requestId: event?.requestContext?.requestId || null,
     });
 
-    return {
-      statusCode: 500,
-      headers: corsHeaders(),
-      body: JSON.stringify({
-        error: {
-          code: 'INTERNAL',
-          message: 'Error interno',
-          details:
-            process.env.ENV === 'dev'
-              ? String(error?.message || 'Unknown error')
-              : undefined,
-        },
-      }),
-    };
+    return toErrorResponse(error);
   }
 };

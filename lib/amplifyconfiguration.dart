@@ -38,7 +38,7 @@ const amplifyconfig = '''{
                 },
                 "GoogleSignIn": {
                     "Permissions": "email,profile,openid",
-                    "ClientId-WebApp": "499707050940-7p9o4n4ap8a3jn2ehn91ai98cd6g0egs.apps.googleusercontent.com"
+                    "ClientId-WebApp": "485871730628-2tvefjr5k98a8qhmrvj8qkmhqpm6472h.apps.googleusercontent.com"
                 },
                 "Auth": {
                     "Default": {
