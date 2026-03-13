@@ -9,6 +9,8 @@ const {
   validateNearbyQuery,
   validateSearchProductsQuery,
   validateStallId,
+  validateUserId,
+  validatePublicVendorQuery,
 } = require('./market.validator');
 
 function toNumber(value) {
@@ -154,6 +156,64 @@ function normalizeCategory(value) {
   return normalizeText(value);
 }
 
+function toNullableString(value) {
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+function toCleanArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function buildDisplayName(userProfile) {
+  const source =
+    userProfile && typeof userProfile === 'object' ? userProfile : {};
+
+  const explicitDisplayName = String(source.displayName || '').trim();
+  if (explicitDisplayName) {
+    return explicitDisplayName;
+  }
+
+  const legacyName = String(source.name || '').trim();
+  if (legacyName) {
+    return legacyName;
+  }
+
+  const fullName = [source.firstName, source.lastName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return fullName || 'Vendedor';
+}
+
+function normalizePhrasePart(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildPublicTagline(categories = []) {
+  const clean = unique(
+    categories
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+  );
+
+  if (!clean.length) {
+    return null;
+  }
+
+  if (clean.length === 1) {
+    return `Vende ${normalizePhrasePart(clean[0])}`;
+  }
+
+  if (clean.length === 2) {
+    return `Vende ${normalizePhrasePart(clean[0])} y ${normalizePhrasePart(clean[1])}`;
+  }
+
+  return `Vende ${normalizePhrasePart(clean[0])}, ${normalizePhrasePart(clean[1])} y más`;
+}
+
 function mapProduct(item) {
   return {
     productId: item.productId,
@@ -162,39 +222,102 @@ function mapProduct(item) {
     category: item.category ?? null,
     description: item.description ?? null,
     price: item.price ?? null,
+    photoKey: item.photoKey ?? null,
     active: item.active ?? true,
     lastQty: item.lastQty ?? null,
     lastSeenAt: item.lastSeenAt ?? null,
   };
 }
 
-function buildOpeningFromProfile(profile) {
-  if (!profile || !profile.currentOpen) {
+function buildOpeningFromSources(profile, opening) {
+  if (!profile?.currentOpen && !opening) {
     return null;
   }
 
   return {
-    status: 'OPEN',
+    status: opening?.status || profile?.currentOpenStatus || 'OPEN',
     openedAt:
-      profile.currentOpenedAt ??
-      profile.openedAt ??
-      profile.updatedAt ??
+      opening?.openedAt ??
+      profile?.currentOpenedAt ??
+      profile?.openedAt ??
+      profile?.updatedAt ??
       null,
-    lat: profile.currentLat ?? null,
-    lng: profile.currentLng ?? null,
-    accuracy: profile.currentAccuracy ?? null,
-    addressLabel: profile.currentAddressLabel ?? null,
+    lat: toNumber(opening?.lat ?? profile?.currentLat),
+    lng: toNumber(opening?.lng ?? profile?.currentLng),
+    accuracy: toNumber(opening?.accuracy ?? profile?.currentAccuracy),
+    addressLabel:
+      opening?.addressLabel ??
+      profile?.currentAddressLabel ??
+      null,
+    address:
+      opening?.address ??
+      profile?.currentAddress ??
+      null,
     stallPhotoKey:
-      profile.currentStallPhotoKey ??
-      profile.stallPhotoKey ??
-      profile.coverPhotoKey ??
+      opening?.stallPhotoKey ??
+      profile?.currentStallPhotoKey ??
+      profile?.stallPhotoKey ??
+      profile?.mainPhotoKey ??
+      profile?.coverPhotoKey ??
       null,
     productsPhotoKey:
-      profile.currentProductsPhotoKey ??
-      profile.productsPhotoKey ??
+      opening?.productsPhotoKey ??
+      profile?.currentProductsPhotoKey ??
+      profile?.productsPhotoKey ??
       null,
-    inventoryItems: profile.currentInventoryItems ?? [],
-    inventorySuggestions: profile.currentInventorySuggestions ?? [],
+    inventoryItems: Array.isArray(opening?.inventoryItems)
+      ? opening.inventoryItems
+      : toCleanArray(profile?.currentInventoryItems),
+    inventorySuggestions: Array.isArray(opening?.inventorySuggestions)
+      ? opening.inventorySuggestions
+      : toCleanArray(profile?.currentInventorySuggestions),
+  };
+}
+
+function buildVendorFromSources({
+  vendorUserId,
+  userProfile,
+  stallCount,
+  categories,
+  fallbackCreatedAt,
+}) {
+  if (!vendorUserId && !userProfile) {
+    return null;
+  }
+
+  const safeProfile =
+    userProfile && typeof userProfile === 'object' ? userProfile : {};
+
+  return {
+    userId: safeProfile.userId || vendorUserId || '',
+    displayName: buildDisplayName(safeProfile),
+    photoKey: toNullableString(safeProfile.photoKey),
+    city: toNullableString(safeProfile.city),
+    zone: toNullableString(safeProfile.zone),
+    sellerSince: safeProfile.createdAt || fallbackCreatedAt || null,
+    stallCount: Number(stallCount || 0),
+    publicTagline: buildPublicTagline(categories),
+  };
+}
+
+function buildPublicStallSummary(profile, link) {
+  const source = profile || link || {};
+  const currentOpen = source.currentOpen;
+
+  return {
+    stallId: source.stallId || '',
+    name: String(source.name || '').trim() || 'Puesto',
+    category: String(source.category || '').trim(),
+    description: String(source.description || '').trim(),
+    mainPhotoKey: source.mainPhotoKey ?? null,
+    coverPhotoKey:
+      source.coverPhotoKey ??
+      source.mainPhotoKey ??
+      source.currentStallPhotoKey ??
+      source.stallPhotoKey ??
+      null,
+    isOpen: !!currentOpen,
+    updatedAt: source.updatedAt || source.createdAt || null,
   };
 }
 
@@ -271,6 +394,7 @@ async function listOpenStallsNear({ currentUser, query }) {
 
       return {
         stallId,
+        vendorUserId: profile.vendorUserId ?? null,
         name,
         category: itemCategory,
         description: String(profile.description || '').trim(),
@@ -279,8 +403,10 @@ async function listOpenStallsNear({ currentUser, query }) {
         lng: stallLng,
         addressLabel: profile.currentAddressLabel ?? null,
         distanceMeters: Math.round(distanceMeters),
+        mainPhotoKey: profile.mainPhotoKey ?? null,
         coverPhotoKey:
           profile.coverPhotoKey ??
+          profile.mainPhotoKey ??
           profile.currentStallPhotoKey ??
           profile.stallPhotoKey ??
           null,
@@ -292,6 +418,7 @@ async function listOpenStallsNear({ currentUser, query }) {
       if (a.distanceMeters !== b.distanceMeters) {
         return a.distanceMeters - b.distanceMeters;
       }
+
       return (b.nameScore || 0) - (a.nameScore || 0);
     })
     .slice(0, limit);
@@ -366,8 +493,11 @@ async function searchProductsNear({ currentUser, query }) {
 
         return {
           stallId: stall.stallId,
+          vendorUserId: stall.vendorUserId ?? null,
           stallName: stall.name,
           stallCategory: stall.category ?? '',
+          mainPhotoKey: stall.mainPhotoKey ?? null,
+          coverPhotoKey: stall.coverPhotoKey ?? null,
           addressLabel: stall.addressLabel ?? null,
           lat: stall.lat,
           lng: stall.lng,
@@ -429,9 +559,30 @@ async function getPublicStallDetail({ currentUser, stallId, query }) {
     });
   }
 
-  const products = env.PRODUCTS_TABLE
-    ? await repository.listProductsByStallId(validStallId, 200)
-    : [];
+  const productsPromise = env.PRODUCTS_TABLE
+    ? repository.listProductsByStallId(validStallId, 200)
+    : Promise.resolve([]);
+
+  const openingPromise =
+    profile.currentOpen && env.OPENINGLOGS_TABLE
+      ? repository.getOpening(validStallId, profile.currentOpen)
+      : Promise.resolve(null);
+
+  const userProfilePromise =
+    profile.vendorUserId && env.USERS_TABLE
+      ? repository.getUserProfile(profile.vendorUserId)
+      : Promise.resolve(null);
+
+  const stallCountPromise = profile.vendorUserId
+    ? repository.countStallsByUserId(profile.vendorUserId)
+    : Promise.resolve(0);
+
+  const [products, opening, userProfile, stallCount] = await Promise.all([
+    productsPromise,
+    openingPromise,
+    userProfilePromise,
+    stallCountPromise,
+  ]);
 
   const activeProducts = products
     .map(mapProduct)
@@ -454,9 +605,25 @@ async function getPublicStallDetail({ currentUser, stallId, query }) {
     );
   }
 
+  const vendorCategories = unique(
+    [
+      String(profile.category || '').trim(),
+      ...activeProducts.map((item) => String(item.category || '').trim()),
+    ].filter(Boolean)
+  );
+
+  const vendor = buildVendorFromSources({
+    vendorUserId: profile.vendorUserId ?? null,
+    userProfile,
+    stallCount,
+    categories: vendorCategories,
+    fallbackCreatedAt: profile.createdAt ?? null,
+  });
+
   return mapper.toPublicStallDetailResponse({
     stall: {
       stallId: profile.stallId,
+      vendorUserId: profile.vendorUserId ?? null,
       name: profile.name || 'Puesto',
       category: profile.category || '',
       description: profile.description || '',
@@ -465,15 +632,23 @@ async function getPublicStallDetail({ currentUser, stallId, query }) {
       lng: stallLng,
       addressLabel: profile.currentAddressLabel ?? null,
       distanceMeters,
+      mainPhotoKey: profile.mainPhotoKey ?? null,
       coverPhotoKey:
         profile.coverPhotoKey ??
+        profile.mainPhotoKey ??
         profile.currentStallPhotoKey ??
         profile.stallPhotoKey ??
         null,
-      vendorUserId: profile.vendorUserId ?? null,
+      paymentMethods: toCleanArray(profile.paymentMethods),
+      priceRange: profile.priceRange ?? null,
+      referenceText: profile.referenceText ?? null,
+      schedule: toCleanArray(profile.schedule),
+      locationVisibility: profile.locationVisibility ?? null,
       updatedAt: profile.updatedAt ?? null,
+      productCount: activeProducts.length,
     },
-    opening: buildOpeningFromProfile(profile),
+    vendor,
+    opening: buildOpeningFromSources(profile, opening),
     products: activeProducts,
   });
 }
@@ -505,6 +680,7 @@ async function listPublicStallProducts({ currentUser, stallId, query }) {
       if (b.matchScore !== a.matchScore) {
         return b.matchScore - a.matchScore;
       }
+
       return String(a.display || '').localeCompare(String(b.display || ''));
     })
     .slice(0, limit)
@@ -516,10 +692,86 @@ async function listPublicStallProducts({ currentUser, stallId, query }) {
   });
 }
 
+async function getPublicVendorProfile({ currentUser, userId, query }) {
+  requireAuthenticated(currentUser);
+
+  const validUserId = validateUserId(userId);
+  const { limit } = validatePublicVendorQuery(query);
+
+  const [userProfile, stallCount, stallLinks] = await Promise.all([
+    env.USERS_TABLE
+      ? repository.getUserProfile(validUserId)
+      : Promise.resolve(null),
+    repository.countStallsByUserId(validUserId),
+    repository.listUserStallLinks(validUserId, limit),
+  ]);
+
+  if (!userProfile && stallCount <= 0) {
+    throw new AppError({
+      code: 'NOT_FOUND',
+      message: 'Vendedor no encontrado',
+      statusCode: 404,
+    });
+  }
+
+  const stallIds = stallLinks
+    .map((item) => String(item.stallId || '').trim())
+    .filter(Boolean);
+
+  const stallProfiles = stallIds.length
+    ? await repository.batchGetStallProfiles(stallIds)
+    : [];
+
+  const profileMap = stallProfiles.reduce((acc, item) => {
+    if (item?.stallId) {
+      acc[item.stallId] = item;
+    }
+    return acc;
+  }, {});
+
+  const stalls = stallLinks
+    .map((link) => buildPublicStallSummary(profileMap[link.stallId], link))
+    .filter((item) => item.stallId)
+    .filter((item) => item.isOpen || item.updatedAt || item.name)
+    .sort((a, b) => {
+      if (a.isOpen !== b.isOpen) {
+        return a.isOpen ? -1 : 1;
+      }
+
+      const aDate = String(a.updatedAt || '');
+      const bDate = String(b.updatedAt || '');
+      if (aDate !== bDate) {
+        return bDate.localeCompare(aDate);
+      }
+
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+
+  const vendorCategories = unique(
+    stalls
+      .map((item) => String(item.category || '').trim())
+      .filter(Boolean)
+  );
+
+  const vendor = buildVendorFromSources({
+    vendorUserId: validUserId,
+    userProfile,
+    stallCount,
+    categories: vendorCategories,
+    fallbackCreatedAt: stalls[0]?.updatedAt || null,
+  });
+
+  return mapper.toPublicVendorResponse({
+    vendor,
+    stalls,
+  });
+}
+
 module.exports = {
   listCategories,
   listOpenStallsNear,
   searchProductsNear,
   getPublicStallDetail,
   listPublicStallProducts,
+  getPublicVendorProfile,
 };

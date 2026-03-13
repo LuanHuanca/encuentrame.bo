@@ -81,6 +81,33 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
   }
 }
 
+function mapOwnedStall(profile, link) {
+  const source = profile || link || {};
+
+  return {
+    stallId: source.stallId || '',
+    vendorUserId: source.vendorUserId || null,
+    name: source.name || 'Mi puesto',
+    category: source.category || '',
+    description: source.description || '',
+    mainPhotoKey: source.mainPhotoKey || '',
+    coverPhotoKey: source.coverPhotoKey || '',
+    paymentMethods: Array.isArray(source.paymentMethods) ? source.paymentMethods : [],
+    priceRange: source.priceRange || null,
+    referenceText: source.referenceText || null,
+    schedule: Array.isArray(source.schedule) ? source.schedule : [],
+    locationVisibility: source.locationVisibility || 'exact',
+    active: source.active ?? true,
+    createdAt: source.createdAt || null,
+    updatedAt: source.updatedAt || null,
+    isOpen: !!source.currentOpen,
+    currentOpen: source.currentOpen || null,
+    currentLat: source.currentLat ?? null,
+    currentLng: source.currentLng ?? null,
+    currentAddressLabel: source.currentAddressLabel ?? null,
+  };
+}
+
 async function listMine(currentUser) {
   requireAuthenticated(currentUser);
   ensureStallsEnv();
@@ -100,26 +127,7 @@ async function listMine(currentUser) {
     return acc;
   }, {});
 
-  const stalls = links.map((link) => {
-    const profile = profileMap[link.stallId] || null;
-    const currentOpen = profile?.currentOpen || null;
-
-    return {
-      stallId: link.stallId,
-      name: profile?.name || link.name || 'Mi puesto',
-      category: profile?.category || link.category || '',
-      description: profile?.description || link.description || '',
-      coverPhotoKey: profile?.coverPhotoKey || link.coverPhotoKey || '',
-      active: profile?.active ?? true,
-      createdAt: profile?.createdAt || link.createdAt || null,
-      updatedAt: profile?.updatedAt || null,
-      isOpen: !!currentOpen,
-      currentOpen,
-      currentLat: profile?.currentLat ?? null,
-      currentLng: profile?.currentLng ?? null,
-      currentAddressLabel: profile?.currentAddressLabel ?? null,
-    };
-  });
+  const stalls = links.map((link) => mapOwnedStall(profileMap[link.stallId], link));
 
   return mapper.toListMineResponse(stalls);
 }
@@ -145,7 +153,14 @@ async function create(currentUser, payload) {
     name: input.name,
     category: input.category,
     description: input.description,
+    mainPhotoKey: input.mainPhotoKey,
     coverPhotoKey: input.coverPhotoKey,
+    paymentMethods: input.paymentMethods,
+    priceRange: input.priceRange,
+    referenceText: input.referenceText,
+    schedule: input.schedule,
+    locationVisibility: input.locationVisibility,
+    active: input.active,
     now,
   });
 
@@ -168,7 +183,7 @@ async function get(currentUser, stallId) {
   }
 
   const stall = await repository.getStallProfile(validStallId);
-  return mapper.toGetResponse(stall);
+  return mapper.toGetResponse(mapOwnedStall(stall));
 }
 
 async function update(currentUser, stallId, payload) {
@@ -186,20 +201,62 @@ async function update(currentUser, stallId, payload) {
     });
   }
 
-  const input = validateUpdateStallInput(payload);
+  const current = await repository.getStallProfile(validStallId);
+  if (!current) {
+    throw new AppError({
+      code: 'NOT_FOUND',
+      message: 'Puesto no encontrado',
+      statusCode: 404,
+    });
+  }
+
+  const changes = validateUpdateStallInput(payload);
+
+  const merged = {
+    name: changes.name !== undefined ? changes.name : current.name || 'Mi puesto',
+    category: changes.category !== undefined ? changes.category : current.category || null,
+    description:
+      changes.description !== undefined ? changes.description : current.description || null,
+    mainPhotoKey:
+      changes.mainPhotoKey !== undefined ? changes.mainPhotoKey : current.mainPhotoKey || null,
+    coverPhotoKey:
+      changes.coverPhotoKey !== undefined ? changes.coverPhotoKey : current.coverPhotoKey || null,
+    paymentMethods:
+      changes.paymentMethods !== undefined
+        ? changes.paymentMethods
+        : Array.isArray(current.paymentMethods)
+          ? current.paymentMethods
+          : [],
+    priceRange:
+      changes.priceRange !== undefined ? changes.priceRange : current.priceRange || null,
+    referenceText:
+      changes.referenceText !== undefined
+        ? changes.referenceText
+        : current.referenceText || null,
+    schedule:
+      changes.schedule !== undefined
+        ? changes.schedule
+        : Array.isArray(current.schedule)
+          ? current.schedule
+          : [],
+    locationVisibility:
+      changes.locationVisibility !== undefined
+        ? changes.locationVisibility
+        : current.locationVisibility || 'exact',
+    active: changes.active !== undefined ? changes.active : current.active ?? true,
+  };
+
   const now = nowIso();
 
   await repository.updateStallProfile({
     stallId: validStallId,
     userId: currentUser.userId,
-    name: input.name,
-    category: input.category,
-    description: input.description,
-    coverPhotoKey: input.coverPhotoKey,
+    ...merged,
     now,
   });
 
-  return mapper.toSimpleOk();
+  const updated = await repository.getStallProfile(validStallId);
+  return mapper.toGetResponse(mapOwnedStall(updated));
 }
 
 async function remove(currentUser, stallId) {
@@ -333,8 +390,14 @@ async function open(currentUser, payload) {
     name: input.stallName,
     lat: input.lat,
     lng: input.lng,
+    accuracy: input.accuracy,
     addressLabel: geo?.label ?? null,
     address: geo?.address ?? null,
+    stallPhotoKey,
+    productsPhotoKey,
+    inventoryItems: reconciled.items,
+    inventorySuggestions: reconciled.suggestions,
+    status,
     openingKey,
     now,
   });
@@ -407,7 +470,7 @@ async function getCurrent(currentUser, stallId) {
   }
 
   return mapper.toGetCurrentResponse({
-    stall,
+    stall: mapOwnedStall(stall),
     opening,
   });
 }

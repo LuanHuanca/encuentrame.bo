@@ -32,34 +32,84 @@ async function createProfile(item) {
     new PutCommand({
       TableName: env.USERS_TABLE,
       Item: item,
+      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
     })
   );
 
   return item;
 }
 
-async function upsertProfileBasics({
-  userId,
-  name,
-  email,
-  updatedAt,
-}) {
+async function updateProfile({ userId, changes }) {
+  const setExpressions = [];
+  const removeExpressions = [];
+  const names = {};
+  const values = {};
+
+  function setField(attributeName, value, alias = attributeName) {
+    names[`#${alias}`] = attributeName;
+    values[`:${alias}`] = value;
+    setExpressions.push(`#${alias} = :${alias}`);
+  }
+
+  function removeField(attributeName, alias = attributeName) {
+    names[`#${alias}`] = attributeName;
+    removeExpressions.push(`#${alias}`);
+  }
+
+  setField('updatedAt', changes.updatedAt, 'updatedAt');
+
+  const updatableFields = [
+    'firstName',
+    'lastName',
+    'displayName',
+    'name',
+    'phone',
+    'gender',
+    'city',
+    'zone',
+    'birthDate',
+    'photoKey',
+  ];
+
+  for (const field of updatableFields) {
+    if (!(field in changes)) {
+      continue;
+    }
+
+    const value = changes[field];
+
+    if (value === null) {
+      removeField(field, field);
+      continue;
+    }
+
+    setField(field, value, field);
+  }
+
+  if ('email' in changes && changes.email) {
+    setField('email', changes.email, 'email');
+  }
+
+  if ('isActive' in changes && typeof changes.isActive === 'boolean') {
+    setField('isActive', changes.isActive, 'isActive');
+  }
+
+  const expressions = [];
+  if (setExpressions.length) {
+    expressions.push(`SET ${setExpressions.join(', ')}`);
+  }
+  if (removeExpressions.length) {
+    expressions.push(`REMOVE ${removeExpressions.join(', ')}`);
+  }
+
   const result = await documentClient.send(
     new UpdateCommand({
       TableName: env.USERS_TABLE,
       Key: getProfileKey(userId),
-      UpdateExpression:
-        'SET entityType = if_not_exists(entityType, :entityType), userId = if_not_exists(userId, :userId), #name = :name, email = if_not_exists(email, :email), updatedAt = :updatedAt',
-      ExpressionAttributeNames: {
-        '#name': 'name',
-      },
-      ExpressionAttributeValues: {
-        ':entityType': 'USER',
-        ':userId': userId,
-        ':name': name,
-        ':email': email,
-        ':updatedAt': updatedAt,
-      },
+      UpdateExpression: expressions.join(' '),
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
       ReturnValues: 'ALL_NEW',
     })
   );
@@ -70,5 +120,5 @@ async function upsertProfileBasics({
 module.exports = {
   findProfileByUserId,
   createProfile,
-  upsertProfileBasics,
+  updateProfile,
 };

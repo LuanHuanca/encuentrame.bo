@@ -62,6 +62,7 @@ async function route(event) {
     if (method === 'GET') {
       return marketController.listCategories({ event, currentUser });
     }
+
     return methodNotAllowed();
   }
 
@@ -69,6 +70,7 @@ async function route(event) {
     if (method === 'GET') {
       return marketController.listOpenStallsNear({ event, currentUser });
     }
+
     return methodNotAllowed();
   }
 
@@ -81,6 +83,24 @@ async function route(event) {
     if (method === 'GET') {
       return marketController.searchProductsNear({ event, currentUser });
     }
+
+    return methodNotAllowed();
+  }
+
+  if (
+    parts[0] === 'market' &&
+    parts[1] === 'vendors' &&
+    parts[2] &&
+    parts.length === 3
+  ) {
+    if (method === 'GET') {
+      return marketController.getPublicVendorProfile({
+        event,
+        currentUser,
+        userId: parts[2],
+      });
+    }
+
     return methodNotAllowed();
   }
 
@@ -97,6 +117,7 @@ async function route(event) {
         stallId: parts[2],
       });
     }
+
     return methodNotAllowed();
   }
 
@@ -114,6 +135,7 @@ async function route(event) {
         stallId: parts[2],
       });
     }
+
     return methodNotAllowed();
   }
 
@@ -122,9 +144,11 @@ async function route(event) {
     if (method === 'GET') {
       return stallsController.listMine({ event, currentUser });
     }
+
     if (method === 'POST') {
       return stallsController.create({ event, currentUser });
     }
+
     return methodNotAllowed();
   }
 
@@ -132,6 +156,7 @@ async function route(event) {
     if (method === 'GET') {
       return stallsController.getMy({ event, currentUser });
     }
+
     return methodNotAllowed();
   }
 
@@ -139,6 +164,7 @@ async function route(event) {
     if (method === 'POST') {
       return stallsController.open({ event, currentUser });
     }
+
     return methodNotAllowed();
   }
 
@@ -155,6 +181,15 @@ async function route(event) {
         stallId: parts[1],
       });
     }
+
+    if (method === 'POST') {
+      return productsController.create({
+        event,
+        currentUser,
+        stallId: parts[1],
+      });
+    }
+
     return methodNotAllowed();
   }
 
@@ -199,6 +234,7 @@ async function route(event) {
         stallId: parts[1],
       });
     }
+
     return methodNotAllowed();
   }
 
@@ -215,6 +251,7 @@ async function route(event) {
         stallId: parts[1],
       });
     }
+
     return methodNotAllowed();
   }
 
@@ -231,6 +268,7 @@ async function route(event) {
         stallId: parts[1],
       });
     }
+
     return methodNotAllowed();
   }
 

@@ -17,44 +17,7 @@ function assertAuthenticated(currentUser) {
   }
 }
 
-async function getMyProfile(currentUser) {
-  assertAuthenticated(currentUser);
-
-  const userId = currentUser.userId;
-  const email = currentUser.email || '';
-
-  if (!env.USERS_TABLE) {
-    return {
-      userId,
-      name: '',
-      email,
-      createdAt: null,
-      updatedAt: null,
-    };
-  }
-
-  let profile = await repository.findProfileByUserId(userId);
-
-  if (!profile) {
-    const now = new Date().toISOString();
-
-    profile = buildUserProfile({
-      userId,
-      name: '',
-      email,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await repository.createProfile(profile);
-  }
-
-  return toUserResponse(profile);
-}
-
-async function updateMyProfile(currentUser, payload) {
-  assertAuthenticated(currentUser);
-
+function ensureUsersEnv() {
   if (!env.USERS_TABLE) {
     throw new AppError({
       code: 'ENV_MISSING',
@@ -62,20 +25,99 @@ async function updateMyProfile(currentUser, payload) {
       statusCode: 500,
     });
   }
+}
 
-  const { name } = validateUpdateProfileInput(payload);
-  const userId = currentUser.userId;
-  const email = currentUser.email || null;
-  const updatedAt = new Date().toISOString();
+function nowIso() {
+  return new Date().toISOString();
+}
 
-  const profile = await repository.upsertProfileBasics({
-    userId,
-    name,
-    email,
-    updatedAt,
+function buildDisplayName(firstName, lastName, fallback = '') {
+  const fullName = [firstName, lastName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return fullName || String(fallback || '').trim() || '';
+}
+
+async function ensureProfileExists(currentUser) {
+  const existing = await repository.findProfileByUserId(currentUser.userId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const now = nowIso();
+  const newProfile = buildUserProfile({
+    userId: currentUser.userId,
+    email: currentUser.email || '',
+    createdAt: now,
+    updatedAt: now,
+    isActive: true,
   });
 
-  return toUserResponse(profile);
+  try {
+    await repository.createProfile(newProfile);
+    return newProfile;
+  } catch (error) {
+    if (error?.name === 'ConditionalCheckFailedException') {
+      return repository.findProfileByUserId(currentUser.userId);
+    }
+    throw error;
+  }
+}
+
+async function getMyProfile(currentUser) {
+  assertAuthenticated(currentUser);
+  ensureUsersEnv();
+
+  const profile = await ensureProfileExists(currentUser);
+  return toUserResponse(profile, currentUser);
+}
+
+async function updateMyProfile(currentUser, payload) {
+  assertAuthenticated(currentUser);
+  ensureUsersEnv();
+
+  const existing = await ensureProfileExists(currentUser);
+  const validatedChanges = validateUpdateProfileInput(payload);
+
+  const nextFirstName =
+    validatedChanges.firstName !== undefined
+      ? validatedChanges.firstName
+      : existing.firstName || null;
+
+  const nextLastName =
+    validatedChanges.lastName !== undefined
+      ? validatedChanges.lastName
+      : existing.lastName || null;
+
+  const currentFallbackName =
+    existing.displayName ||
+    existing.name ||
+    '';
+
+  const nextDisplayName = buildDisplayName(
+    nextFirstName,
+    nextLastName,
+    currentFallbackName
+  );
+
+  const changes = {
+    ...validatedChanges,
+    displayName: nextDisplayName || null,
+    name: nextDisplayName || null,
+    email: currentUser.email || existing.email || '',
+    updatedAt: nowIso(),
+  };
+
+  const updatedProfile = await repository.updateProfile({
+    userId: currentUser.userId,
+    changes,
+  });
+
+  return toUserResponse(updatedProfile, currentUser);
 }
 
 module.exports = {

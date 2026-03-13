@@ -46,10 +46,21 @@ async function listPublicStallProducts({ currentUser, stallId, event }) {
   return ok(data);
 }
 
+async function getPublicVendorProfile({ currentUser, userId, event }) {
+  const data = await marketService.getPublicVendorProfile({
+    currentUser,
+    userId,
+    query: event?.queryStringParameters || {},
+  });
+
+  return ok(data);
+}
+
 module.exports = {
   listCategories,
   listOpenStallsNear,
   searchProductsNear,
   getPublicStallDetail,
   listPublicStallProducts,
+  getPublicVendorProfile,
 };

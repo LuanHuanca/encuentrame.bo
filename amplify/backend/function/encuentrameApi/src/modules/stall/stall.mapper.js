@@ -8,11 +8,7 @@ function toListMineResponse(stalls) {
 
 function toCreateResponse(stall) {
   return {
-    stallId: stall.stallId,
-    name: stall.name,
-    category: stall.category || '',
-    description: stall.description || '',
-    coverPhotoKey: stall.coverPhotoKey || '',
+    stall,
   };
 }
 

@@ -77,9 +77,31 @@ function validateStallId(stallId) {
   return value;
 }
 
+function validateUserId(userId) {
+  const value = String(userId || '').trim();
+
+  if (!value) {
+    throw new AppError({
+      code: 'VALIDATION',
+      message: 'userId requerido',
+      statusCode: 400,
+    });
+  }
+
+  return value;
+}
+
+function validatePublicVendorQuery(query = {}) {
+  return {
+    limit: clamp(toNumber(query.limit) ?? 12, 1, 30),
+  };
+}
+
 module.exports = {
   requireAuthenticated,
   validateNearbyQuery,
   validateSearchProductsQuery,
   validateStallId,
+  validateUserId,
+  validatePublicVendorQuery,
 };

@@ -24,9 +24,10 @@ function toProductSearchResponse({ q, radiusKm, results }) {
   };
 }
 
-function toPublicStallDetailResponse({ stall, opening, products }) {
+function toPublicStallDetailResponse({ stall, vendor, opening, products }) {
   return {
     stall,
+    vendor,
     opening,
     products,
     countProducts: products.length,
@@ -41,10 +42,19 @@ function toPublicStallProductsResponse({ stallId, products }) {
   };
 }
 
+function toPublicVendorResponse({ vendor, stalls }) {
+  return {
+    vendor,
+    stalls,
+    countStalls: Number(vendor?.stallCount || stalls.length),
+  };
+}
+
 module.exports = {
   toCategoryResponse,
   toOpenStallsResponse,
   toProductSearchResponse,
   toPublicStallDetailResponse,
   toPublicStallProductsResponse,
+  toPublicVendorResponse,
 };

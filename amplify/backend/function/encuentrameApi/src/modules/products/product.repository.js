@@ -3,6 +3,7 @@
 const {
   QueryCommand,
   GetCommand,
+  PutCommand,
   UpdateCommand,
   DeleteCommand,
 } = require('@aws-sdk/lib-dynamodb');
@@ -56,33 +57,81 @@ async function listByStallId(stallId) {
   return result.Items || [];
 }
 
+async function getProduct(stallId, productId) {
+  const result = await documentClient.send(
+    new GetCommand({
+      TableName: env.PRODUCTS_TABLE,
+      Key: {
+        pk: pkStall(stallId),
+        sk: skProduct(productId),
+      },
+    })
+  );
+
+  return result.Item || null;
+}
+
+async function createProduct(item) {
+  await documentClient.send(
+    new PutCommand({
+      TableName: env.PRODUCTS_TABLE,
+      Item: item,
+      ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+    })
+  );
+
+  return item;
+}
+
 async function updateProduct({ stallId, productId, changes }) {
-  const sets = [];
+  const setExpressions = [];
+  const removeExpressions = [];
   const names = {};
   const values = {};
 
-  if (changes.display !== undefined) {
-    names['#display'] = 'display';
-    values[':display'] = changes.display;
-    sets.push('#display = :display');
+  function setField(attributeName, value, alias = attributeName) {
+    names[`#${alias}`] = attributeName;
+    values[`:${alias}`] = value;
+    setExpressions.push(`#${alias} = :${alias}`);
   }
 
-  if (changes.price !== undefined) {
-    names['#price'] = 'price';
-    values[':price'] = changes.price;
-    sets.push('#price = :price');
+  function removeField(attributeName, alias = attributeName) {
+    names[`#${alias}`] = attributeName;
+    removeExpressions.push(`#${alias}`);
   }
 
-  if (changes.active !== undefined) {
-    names['#active'] = 'active';
-    values[':active'] = changes.active;
-    sets.push('#active = :active');
+  setField('updatedAt', changes.updatedAt, 'updatedAt');
+
+  const nullableFields = ['category', 'description', 'photoKey', 'price'];
+  for (const field of nullableFields) {
+    if (!(field in changes)) {
+      continue;
+    }
+
+    if (changes[field] === null) {
+      removeField(field, field);
+      continue;
+    }
+
+    setField(field, changes[field], field);
   }
 
-  if (changes.lastQty !== undefined) {
-    names['#lastQty'] = 'lastQty';
-    values[':lastQty'] = changes.lastQty;
-    sets.push('#lastQty = :lastQty');
+  const directFields = ['canonical', 'display', 'active', 'lastQty', 'lastSeenAt'];
+  for (const field of directFields) {
+    if (!(field in changes)) {
+      continue;
+    }
+
+    setField(field, changes[field], field);
+  }
+
+  const expressions = [];
+  if (setExpressions.length) {
+    expressions.push(`SET ${setExpressions.join(', ')}`);
+  }
+
+  if (removeExpressions.length) {
+    expressions.push(`REMOVE ${removeExpressions.join(', ')}`);
   }
 
   const result = await documentClient.send(
@@ -92,7 +141,7 @@ async function updateProduct({ stallId, productId, changes }) {
         pk: pkStall(stallId),
         sk: skProduct(productId),
       },
-      UpdateExpression: `SET ${sets.join(', ')}`,
+      UpdateExpression: expressions.join(' '),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
       ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
@@ -118,6 +167,8 @@ async function deleteProduct(stallId, productId) {
 module.exports = {
   userOwnsStall,
   listByStallId,
+  getProduct,
+  createProduct,
   updateProduct,
   deleteProduct,
 };
