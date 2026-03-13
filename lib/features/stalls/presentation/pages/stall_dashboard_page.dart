@@ -62,6 +62,43 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     }
   }
 
+  String _formatPriceRange(String value) {
+    switch (value.trim()) {
+      case 'economic':
+        return 'Económico';
+      case 'medium':
+        return 'Medio';
+      case 'premium':
+        return 'Premium';
+      default:
+        return value.trim();
+    }
+  }
+
+  String _formatLocationVisibility(String value) {
+    switch (value.trim()) {
+      case 'exact':
+        return 'Ubicación exacta';
+      case 'approximate':
+        return 'Ubicación aproximada';
+      default:
+        return value.trim();
+    }
+  }
+
+  String _formatPaymentMethod(String value) {
+    switch (value.trim()) {
+      case 'cash':
+        return 'Efectivo';
+      case 'qr':
+        return 'QR';
+      case 'transfer':
+        return 'Transferencia';
+      default:
+        return value.trim();
+    }
+  }
+
   Future<String?> _getStorageUrl(String key) async {
     try {
       final response = await Amplify.Storage.getUrl(
@@ -86,13 +123,14 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
       _stall = (response['stall'] as Map?)?.cast<String, dynamic>();
       _opening = (response['opening'] as Map?)?.cast<String, dynamic>();
 
-      final stallPhotoKey = _opening?['stallPhotoKey'] as String?;
-      final productsPhotoKey = _opening?['productsPhotoKey'] as String?;
+      final stallPhotoKey = (_opening?['stallPhotoKey'] ?? '').toString().trim();
+      final productsPhotoKey =
+      (_opening?['productsPhotoKey'] ?? '').toString().trim();
 
       _stallPhotoUrl =
-      stallPhotoKey == null ? null : await _getStorageUrl(stallPhotoKey);
+      stallPhotoKey.isEmpty ? null : await _getStorageUrl(stallPhotoKey);
 
-      _productsPhotoUrl = productsPhotoKey == null
+      _productsPhotoUrl = productsPhotoKey.isEmpty
           ? null
           : await _getStorageUrl(productsPhotoKey);
 
@@ -129,7 +167,9 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
             .toString()
             .toLowerCase()
             .compareTo(
-          (b['display'] ?? b['canonical'] ?? '').toString().toLowerCase(),
+          (b['display'] ?? b['canonical'] ?? '')
+              .toString()
+              .toLowerCase(),
         ),
       );
     } on ApiClientException catch (error, stackTrace) {
@@ -210,6 +250,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
     final shell = MainShell.of(context);
     final titleColor = AppThemeColors.titleColor(context);
     final subtitleColor = AppThemeColors.subtitleColor(context);
+    final fillColor = AppThemeColors.inputFill(context);
 
     if (_loading) {
       return const Scaffold(
@@ -277,15 +318,25 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
       );
     }
 
+    final stall = _stall ?? <String, dynamic>{};
+
+    final stallName = (stall['name'] ?? widget.stallName).toString();
+    final stallCategory = (stall['category'] ?? '').toString().trim();
+    final stallDescription = (stall['description'] ?? '').toString().trim();
+    final referenceText = (stall['referenceText'] ?? '').toString().trim();
+    final priceRange = (stall['priceRange'] ?? '').toString().trim();
+    final locationVisibility =
+    (stall['locationVisibility'] ?? '').toString().trim();
+    final paymentMethods =
+        (stall['paymentMethods'] as List?)?.cast<dynamic>() ?? const [];
+
     final addressLabel =
-    (opening['addressLabel'] ?? _stall?['currentAddressLabel'] ?? '')
+    (opening['addressLabel'] ?? stall['currentAddressLabel'] ?? '')
         .toString()
         .trim();
 
     final status = (opening['status'] ?? 'OPEN').toString();
     final openedAt = _formatDate(opening['openedAt']?.toString());
-    final stallCategory = (_stall?['category'] ?? '').toString().trim();
-    final stallDescription = (_stall?['description'] ?? '').toString().trim();
 
     final inventoryItems =
         (opening['inventoryItems'] as List?)?.cast<dynamic>() ?? const [];
@@ -295,7 +346,7 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.stallName.isEmpty ? 'Mi puesto' : widget.stallName),
+        title: Text(stallName.isEmpty ? 'Mi puesto' : stallName),
         actions: [
           IconButton(
             onPressed: shell == null ? null : shell.switchToBuyer,
@@ -314,150 +365,203 @@ class _StallDashboardPageState extends State<StallDashboardPage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadAll,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              _stall?['name']?.toString() ?? widget.stallName,
-              style: TextStyle(
-                color: titleColor,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppThemeColors.backgroundGradient(context),
+          ),
+        ),
+        child: RefreshIndicator(
+          onRefresh: _loadAll,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stallName,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _MetaChip(label: 'Estado: $status'),
+                        if (stallCategory.isNotEmpty)
+                          _MetaChip(label: stallCategory),
+                        if (openedAt.isNotEmpty)
+                          _MetaChip(label: 'Abierto: $openedAt'),
+                        if (priceRange.isNotEmpty)
+                          _MetaChip(label: _formatPriceRange(priceRange)),
+                        if (locationVisibility.isNotEmpty)
+                          _MetaChip(
+                            label: _formatLocationVisibility(locationVisibility),
+                          ),
+                      ],
+                    ),
+                    if (stallDescription.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        stallDescription,
+                        style: TextStyle(
+                          color: subtitleColor,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                    if (referenceText.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _InfoRow(
+                        icon: Icons.info_outline_rounded,
+                        text: referenceText,
+                        color: subtitleColor,
+                      ),
+                    ],
+                    if (addressLabel.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _AddressCard(
+                        label: addressLabel,
+                        onCopy: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: addressLabel),
+                          );
+
+                          if (!context.mounted) return;
+                          AppSnackbar.success(context, 'Dirección copiada.');
+                        },
+                      ),
+                    ],
+                    if (paymentMethods.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: paymentMethods
+                            .map(
+                              (item) => _MetaChip(
+                            label: _formatPaymentMethod(item.toString()),
+                          ),
+                        )
+                            .toList(),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Chip(label: Text('Estado: $status')),
-                if (stallCategory.isNotEmpty) Chip(label: Text(stallCategory)),
-                if (openedAt.isNotEmpty) Chip(label: Text('Abierto: $openedAt')),
-              ],
-            ),
-            if (stallDescription.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
+              _LocationCard(opening: opening),
+              const SizedBox(height: 16),
               Text(
-                stallDescription,
-                style: TextStyle(color: subtitleColor),
+                'Imágenes',
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ],
-            if (addressLabel.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _AddressCard(
-                label: addressLabel,
-                onCopy: () async {
-                  await Clipboard.setData(
-                    ClipboardData(text: addressLabel),
-                  );
-
-                  if (!context.mounted) return;
-
-                  AppSnackbar.success(context, 'Dirección copiada.');
-                },
+              const SizedBox(height: 10),
+              _ImageCard(
+                label: 'Foto del puesto',
+                imageUrl: _stallPhotoUrl,
               ),
-            ],
-            const SizedBox(height: 16),
-            _LocationCard(opening: opening),
-            const SizedBox(height: 16),
-            Text(
-              'Imágenes',
-              style: TextStyle(
-                color: titleColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
+              const SizedBox(height: 10),
+              _ImageCard(
+                label: 'Foto de productos',
+                imageUrl: _productsPhotoUrl,
               ),
-            ),
-            const SizedBox(height: 10),
-            _ImageCard(
-              label: 'Foto del puesto',
-              imageUrl: _stallPhotoUrl,
-            ),
-            const SizedBox(height: 10),
-            _ImageCard(
-              label: 'Foto de productos',
-              imageUrl: _productsPhotoUrl,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Productos',
-                    style: TextStyle(
-                      color: titleColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Productos',
+                      style: TextStyle(
+                        color: titleColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                if (_productsLoading)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                  if (_productsLoading)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  IconButton(
+                    onPressed: _productsLoading
+                        ? null
+                        : () => _loadProducts(showLoader: true),
+                    icon: const Icon(Icons.refresh),
                   ),
-                IconButton(
-                  onPressed: _productsLoading
-                      ? null
-                      : () => _loadProducts(showLoader: true),
-                  icon: const Icon(Icons.refresh),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _openProductsManager,
-                  icon: const Icon(Icons.inventory_2_outlined),
-                  label: const Text('Gestionar'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _ProductsCard(
-              products: _products,
-              subtitleColor: subtitleColor,
-            ),
-            const SizedBox(height: 16),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: Text(
-                'Inventario extraído',
-                style: TextStyle(
-                  color: titleColor,
-                  fontSize: 14,
-                ),
+                  FilledButton.tonalIcon(
+                    onPressed: _openProductsManager,
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('Gestionar'),
+                  ),
+                ],
               ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _InventoryList(
-                    items: inventoryItems,
-                    emptyText: 'Sin items detectados.',
-                  ),
-                ),
-              ],
-            ),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: Text(
-                'Sugerencias por foto',
-                style: TextStyle(
-                  color: titleColor,
-                  fontSize: 14,
-                ),
+              const SizedBox(height: 10),
+              _ProductsCard(
+                products: _products,
+                subtitleColor: subtitleColor,
               ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _SuggestionsList(
-                    items: suggestions,
-                    emptyText: 'Sin sugerencias.',
+              const SizedBox(height: 16),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Inventario extraído',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 14,
                   ),
                 ),
-              ],
-            ),
-          ],
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _InventoryList(
+                      items: inventoryItems,
+                      emptyText: 'Sin items detectados.',
+                    ),
+                  ),
+                ],
+              ),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Sugerencias por foto',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 14,
+                  ),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SuggestionsList(
+                      items: suggestions,
+                      emptyText: 'Sin sugerencias.',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -539,9 +643,9 @@ class _ProductsCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  Chip(label: Text(isActive ? 'Activo' : 'Inactivo')),
-                  if (category.isNotEmpty) Chip(label: Text(category)),
-                  Chip(label: Text('x$lastQuantity')),
+                  _MetaChip(label: isActive ? 'Activo' : 'Inactivo'),
+                  if (category.isNotEmpty) _MetaChip(label: category),
+                  _MetaChip(label: 'x$lastQuantity'),
                 ],
               ),
               if (description.isNotEmpty) ...[
@@ -672,7 +776,10 @@ class _AddressCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppThemeColors.inputFill(context),
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -767,7 +874,8 @@ class _LocationCard extends StatelessWidget {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'encuentrame.bo',
                   ),
                   MarkerLayer(
@@ -840,6 +948,67 @@ class _ImageCard extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitleColor = AppThemeColors.subtitleColor(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: subtitleColor,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

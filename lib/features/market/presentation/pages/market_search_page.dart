@@ -1,3 +1,4 @@
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -25,6 +26,8 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
 
   final RestClient _api = RestClient();
   final TextEditingController _searchController = TextEditingController();
+
+  final Map<String, Future<String?>> _storageUrlCache = {};
 
   Position? _position;
 
@@ -60,6 +63,26 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     super.dispose();
   }
 
+  Future<String?> _getStorageUrl(String key) {
+    final trimmedKey = key.trim();
+
+    if (trimmedKey.isEmpty) {
+      return Future.value(null);
+    }
+
+    return _storageUrlCache.putIfAbsent(trimmedKey, () async {
+      try {
+        final response = await Amplify.Storage.getUrl(
+          path: StoragePath.fromString(trimmedKey),
+        ).result;
+
+        return response.url.toString();
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+
   String _formatDistance(num? meters) {
     final value = meters?.toDouble();
     if (value == null) return '';
@@ -67,18 +90,39 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     return '${(value / 1000).toStringAsFixed(1)} km';
   }
 
+  String _formatPrice(dynamic value) {
+    if (value == null) return '';
+    final parsed = num.tryParse(value.toString());
+    if (parsed == null) return '';
+    return 'Bs ${parsed % 1 == 0 ? parsed.toInt() : parsed}';
+  }
+
+  String _formatStock(dynamic value) {
+    final parsed = num.tryParse(value?.toString() ?? '');
+    if (parsed == null) return '';
+    return 'x${parsed.toInt()}';
+  }
+
   List<Map<String, dynamic>> _sortResults(List<Map<String, dynamic>> items) {
     final sorted = List<Map<String, dynamic>>.from(items);
+
     sorted.sort((a, b) {
       final aD = (a['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
       final bD = (b['distanceMeters'] as num?)?.toDouble() ?? double.infinity;
-      if (aD != bD) return aD.compareTo(bD);
+
+      if (aD != bD) {
+        return aD.compareTo(bD);
+      }
+
       final aP = ((a['product'] as Map?) ?? const {}).cast<String, dynamic>();
       final bP = ((b['product'] as Map?) ?? const {}).cast<String, dynamic>();
+
       final aName = (aP['display'] ?? aP['canonical'] ?? '').toString();
       final bName = (bP['display'] ?? bP['canonical'] ?? '').toString();
+
       return aName.toLowerCase().compareTo(bName.toLowerCase());
     });
+
     return sorted;
   }
 
@@ -89,10 +133,14 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           .map((item) => item.toString().trim())
           .where((item) => item.isNotEmpty)
           .toList();
+
       if (!mounted) return;
+
       setState(() {
         _categories = ['Todos', ...values];
-        if (!_categories.contains(_selectedCategory)) _selectedCategory = 'Todos';
+        if (!_categories.contains(_selectedCategory)) {
+          _selectedCategory = 'Todos';
+        }
       });
     } catch (_) {}
   }
@@ -102,36 +150,52 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       _gettingLocation = true;
       _errorMessage = null;
     });
+
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
       if (!serviceEnabled) {
         setState(() => _errorMessage = 'Activa el GPS para usar la app.');
         return;
       }
+
       var permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+
       if (permission == LocationPermission.denied) {
         setState(() => _errorMessage = 'Permiso de ubicación denegado.');
         return;
       }
+
       if (permission == LocationPermission.deniedForever) {
-        setState(() => _errorMessage =
-            'El permiso de ubicación está bloqueado. Habilítalo desde ajustes.');
+        setState(() {
+          _errorMessage =
+          'El permiso de ubicación está bloqueado. Habilítalo desde ajustes.';
+        });
         return;
       }
+
       final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
       if (!mounted) return;
+
       setState(() => _position = position);
       await _loadInitialNearbyStalls();
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
+
       setState(() => _errorMessage = 'No se pudo obtener tu ubicación.');
     } finally {
-      if (mounted) setState(() => _gettingLocation = false);
+      if (mounted) {
+        setState(() => _gettingLocation = false);
+      }
     }
   }
 
@@ -141,6 +205,7 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       _errorMessage = null;
       _activeModeLabel = 'Puestos cercanos';
     });
+
     try {
       final response = await _api.get(
         '/market/open-stalls',
@@ -154,24 +219,32 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           if (_selectedCategory != 'Todos') 'category': _selectedCategory,
         },
       );
+
       final rawStalls =
           (response['stalls'] as List?)?.cast<dynamic>() ?? const [];
-      final stalls =
-          rawStalls.map((item) => (item as Map).cast<String, dynamic>()).toList();
+
+      final stalls = rawStalls
+          .map((item) => (item as Map).cast<String, dynamic>())
+          .toList();
 
       final items = <Map<String, dynamic>>[];
+
       for (final stall in stalls) {
         final stallId = (stall['stallId'] ?? '').toString();
         final stallName = (stall['name'] ?? 'Puesto').toString();
         final preview =
             (stall['productsPreview'] as List?)?.cast<dynamic>() ?? const [];
+
         for (final rawProduct in preview) {
           final product = (rawProduct as Map).cast<String, dynamic>();
+
           items.add({
             'stallId': stallId,
+            'vendorUserId': stall['vendorUserId'],
             'stallName': stallName,
             'stallCategory': stall['category'],
             'stallDescription': stall['description'],
+            'coverPhotoKey': stall['coverPhotoKey'],
             'distanceMeters': stall['distanceMeters'],
             'addressLabel': stall['addressLabel'],
             'lat': stall['lat'],
@@ -180,7 +253,9 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           });
         }
       }
+
       if (!mounted) return;
+
       setState(() {
         _openStalls = stalls;
         _results = _sortResults(items);
@@ -189,40 +264,52 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       });
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
+
       final message = UserFriendlyMessages.fromApiError(error);
+
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
+
       AppSnackbar.error(context, message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
+
       final message = UserFriendlyMessages.fromGenericError(error);
+
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
+
       AppSnackbar.error(context, message);
     }
   }
 
   Future<void> _searchProducts() async {
     FocusScope.of(context).unfocus();
+
     final query = _searchController.text.trim();
+
     if (query.isEmpty) {
       await _loadInitialNearbyStalls();
       return;
     }
+
     setState(() {
       _loading = true;
       _errorMessage = null;
       _results = [];
       _activeModeLabel = '"$query"';
     });
+
     try {
       final response = await _api.get(
         '/market/products/search',
@@ -235,39 +322,55 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           if (_selectedCategory != 'Todos') 'category': _selectedCategory,
         },
       );
+
       final rawResults =
           (response['results'] as List?)?.cast<dynamic>() ?? const [];
-      final results =
-          rawResults.map((item) => (item as Map).cast<String, dynamic>()).toList();
+
+      final results = rawResults
+          .map((item) => (item as Map).cast<String, dynamic>())
+          .toList();
+
       if (!mounted) return;
+
       setState(() {
         _results = _sortResults(results);
         _loading = false;
         _hasLoadedOnce = true;
       });
+
       if (_results.isEmpty) {
         AppSnackbar.info(
-            context, 'No encontramos "$query" cerca. Intenta con otra palabra.');
+          context,
+          'No encontramos "$query" cerca. Intenta con otra palabra.',
+        );
       }
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
+
       final message = UserFriendlyMessages.fromApiError(error);
+
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
+
       AppSnackbar.error(context, message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
+
       if (!mounted) return;
+
       final message = UserFriendlyMessages.fromGenericError(error);
+
       setState(() {
         _errorMessage = message;
         _loading = false;
         _hasLoadedOnce = true;
       });
+
       AppSnackbar.error(context, message);
     }
   }
@@ -295,6 +398,7 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
       AppSnackbar.info(context, 'Este resultado no tiene coordenadas.');
       return;
     }
+
     final point = LatLng(latitude, longitude);
 
     showModalBottomSheet<void>(
@@ -310,17 +414,22 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(stallName,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  Text(
+                    stallName,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
                   if (addressLabel.isNotEmpty) ...[
                     const SizedBox(height: 4),
-                    Text(addressLabel,
-                        style: TextStyle(
-                            color: AppThemeColors.subtitleColor(context),
-                            fontSize: 13)),
+                    Text(
+                      addressLabel,
+                      style: TextStyle(
+                        color: AppThemeColors.subtitleColor(context),
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 12),
                   Expanded(
@@ -328,22 +437,29 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                       borderRadius: BorderRadius.circular(16),
                       child: FlutterMap(
                         options: MapOptions(
-                            initialCenter: point, initialZoom: 16),
+                          initialCenter: point,
+                          initialZoom: 16,
+                        ),
                         children: [
                           TileLayer(
                             urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'encuentrame.bo',
                           ),
-                          MarkerLayer(markers: [
-                            Marker(
-                              point: point,
-                              width: 48,
-                              height: 48,
-                              child: const Icon(Icons.location_pin,
-                                  size: 42, color: AppColors.orangeAccent),
-                            ),
-                          ]),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: point,
+                                width: 48,
+                                height: 48,
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  size: 42,
+                                  color: AppColors.orangeAccent,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -354,8 +470,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         await Clipboard.setData(
-                            ClipboardData(text: '$latitude,$longitude'));
+                          ClipboardData(text: '$latitude,$longitude'),
+                        );
+
                         if (!context.mounted) return;
+
                         Navigator.pop(sheetContext);
                         AppSnackbar.success(context, 'Coordenadas copiadas.');
                       },
@@ -387,11 +506,13 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Filtros de búsqueda',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    Text(
+                      'Filtros de búsqueda',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
                     const SizedBox(height: 20),
                     DropdownButtonFormField<String>(
                       value: _selectedCategory,
@@ -401,8 +522,12 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                         prefixIcon: Icon(Icons.category_outlined),
                       ),
                       items: _categories
-                          .map((item) => DropdownMenuItem<String>(
-                              value: item, child: Text(item)))
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                          value: item,
+                          child: Text(item),
+                        ),
+                      )
                           .toList(),
                       onChanged: (value) {
                         if (value == null) return;
@@ -416,11 +541,16 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                       decoration: const InputDecoration(
                         labelText: 'Límite de resultados',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.format_list_numbered_rounded),
+                        prefixIcon:
+                        Icon(Icons.format_list_numbered_rounded),
                       ),
                       items: const [10, 25, 50, 100]
-                          .map((item) => DropdownMenuItem<int>(
-                              value: item, child: Text(item.toString())))
+                          .map(
+                            (item) => DropdownMenuItem<int>(
+                          value: item,
+                          child: Text(item.toString()),
+                        ),
+                      )
                           .toList(),
                       onChanged: (value) {
                         if (value == null) return;
@@ -463,19 +593,22 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  // ─── Map view ──────────────────────────────────────────────────────────────
-
   Widget _buildMapView() {
     final subtitleColor = AppThemeColors.subtitleColor(context);
-    if (_openStalls.isEmpty && !_hasLocation) return _buildEmptyState(subtitleColor);
+
+    if (_openStalls.isEmpty && !_hasLocation) {
+      return _buildEmptyState(subtitleColor);
+    }
 
     final userPoint =
-        _hasLocation ? LatLng(_position!.latitude, _position!.longitude) : null;
+    _hasLocation ? LatLng(_position!.latitude, _position!.longitude) : null;
 
     LatLng initialCenter;
+
     if (_openStalls.isNotEmpty) {
       final firstLat = (_openStalls.first['lat'] as num?)?.toDouble();
       final firstLng = (_openStalls.first['lng'] as num?)?.toDouble();
+
       if (firstLat != null && firstLng != null) {
         initialCenter = LatLng(firstLat, firstLng);
       } else {
@@ -486,37 +619,56 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     }
 
     final markers = <Marker>[];
+
     for (final stall in _openStalls) {
       final lat = (stall['lat'] as num?)?.toDouble();
       final lng = (stall['lng'] as num?)?.toDouble();
+
       if (lat == null || lng == null) continue;
-      markers.add(Marker(
-        point: LatLng(lat, lng),
-        width: 56,
-        height: 56,
-        child: GestureDetector(
-          onTap: () {
-            final stallId = (stall['stallId'] ?? '').toString();
-            if (stallId.isEmpty) return;
-            _openStallDetail(stallId: stallId);
-          },
-          child: const Icon(Icons.location_on, size: 40, color: AppColors.orangeAccent),
+
+      markers.add(
+        Marker(
+          point: LatLng(lat, lng),
+          width: 56,
+          height: 56,
+          child: GestureDetector(
+            onTap: () {
+              final stallId = (stall['stallId'] ?? '').toString();
+              if (stallId.isEmpty) return;
+              _openStallDetail(stallId: stallId);
+            },
+            child: const Icon(
+              Icons.location_on,
+              size: 40,
+              color: AppColors.orangeAccent,
+            ),
+          ),
         ),
-      ));
+      );
     }
+
     if (_showUserMarker && userPoint != null) {
-      markers.add(Marker(
-        point: userPoint,
-        width: 44,
-        height: 44,
-        child: const Icon(Icons.my_location_rounded, size: 28, color: AppColors.primary),
-      ));
+      markers.add(
+        Marker(
+          point: userPoint,
+          width: 44,
+          height: 44,
+          child: const Icon(
+            Icons.my_location_rounded,
+            size: 28,
+            color: AppColors.primary,
+          ),
+        ),
+      );
     }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: FlutterMap(
-        options: MapOptions(initialCenter: initialCenter, initialZoom: 14),
+        options: MapOptions(
+          initialCenter: initialCenter,
+          initialZoom: 14,
+        ),
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -528,12 +680,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  // ─── Empty / loading state ─────────────────────────────────────────────────
-
   Widget _buildEmptyState(Color subtitleColor) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
+
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -543,9 +694,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
             children: [
               Icon(Icons.wifi_off_rounded, size: 48, color: subtitleColor),
               const SizedBox(height: 12),
-              Text(_errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: subtitleColor)),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: subtitleColor),
+              ),
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: _ensureLocation,
@@ -557,12 +710,16 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
         ),
       );
     }
+
     if (!_hasLoadedOnce) {
       return Center(
-        child: Text('Cargando resultados...',
-            style: TextStyle(color: subtitleColor)),
+        child: Text(
+          'Cargando resultados...',
+          style: TextStyle(color: subtitleColor),
+        ),
       );
     }
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -585,31 +742,32 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  // ─── Stall card (premium design) ──────────────────────────────────────────
-
   Widget _buildStallCard(
-      Map<String, dynamic> stall, Color titleColor, Color subtitleColor) {
+      Map<String, dynamic> stall,
+      Color titleColor,
+      Color subtitleColor,
+      ) {
     final stallId = (stall['stallId'] ?? '').toString();
     final stallName = (stall['name'] ?? 'Puesto').toString();
     final stallCategory = (stall['category'] ?? '').toString().trim();
     final addressLabel = (stall['addressLabel'] ?? '').toString().trim();
     final distanceLabel = _formatDistance(stall['distanceMeters'] as num?);
-
+    final coverPhotoKey = (stall['coverPhotoKey'] ?? '').toString().trim();
     final preview =
         (stall['productsPreview'] as List?)?.cast<dynamic>() ?? const [];
+
     final previewText = preview
         .map((item) {
-          final p = (item as Map).cast<String, dynamic>();
-          return (p['display'] ?? p['canonical'] ?? '').toString().trim();
-        })
+      final p = (item as Map).cast<String, dynamic>();
+      return (p['display'] ?? p['canonical'] ?? '').toString().trim();
+    })
         .where((name) => name.isNotEmpty)
-        .take(5)
+        .take(4)
         .join(' · ');
 
-    // Avatar letter
-    final initials = stallName.trim().isNotEmpty
-        ? stallName.trim()[0].toUpperCase()
-        : 'P';
+    final productsCount = preview.length;
+    final initials =
+    stallName.trim().isNotEmpty ? stallName.trim()[0].toUpperCase() : 'P';
 
     return Material(
       color: Colors.transparent,
@@ -625,34 +783,15 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // Avatar
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.blueNeon],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    initials,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                    ),
-                  ),
+                _StorageImageThumb(
+                  storageKey: coverPhotoKey,
+                  futureFactory: _getStorageUrl,
+                  fallback: _GradientInitialBox(initials: initials),
                 ),
                 const SizedBox(width: 12),
-
-                // Text info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,27 +812,15 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                           ),
                           if (distanceLabel.isNotEmpty) ...[
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                distanceLabel,
-                                style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                            _Badge(
+                              label: distanceLabel,
+                              color: AppColors.primary,
                             ),
                           ],
                         ],
                       ),
                       if (stallCategory.isNotEmpty || addressLabel.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           [
                             if (stallCategory.isNotEmpty) stallCategory,
@@ -705,30 +832,31 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                         ),
                       ],
                       if (previewText.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Row(
-                          children: [
-                            Icon(Icons.inventory_2_outlined,
-                                size: 12, color: subtitleColor),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                previewText,
-                                style: TextStyle(
-                                    color: subtitleColor, fontSize: 11),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 6),
+                        Text(
+                          previewText,
+                          style: TextStyle(color: subtitleColor, fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _MiniTag(label: 'Abierto', color: AppColors.statusOpen),
+                          if (productsCount > 0)
+                            _MiniTag(
+                              label: '$productsCount productos',
+                              color: AppColors.orangeAccent,
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 6),
-
-                // Map icon button
                 GestureDetector(
                   onTap: () => _showLocationSheet({
                     'lat': stall['lat'],
@@ -749,8 +877,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                       ),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.map_outlined,
-                        size: 18, color: subtitleColor),
+                    child: Icon(
+                      Icons.map_outlined,
+                      size: 18,
+                      color: subtitleColor,
+                    ),
                   ),
                 ),
               ],
@@ -761,21 +892,31 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  // ─── Product card (search results) ────────────────────────────────────────
-
-  Widget _buildProductCard(Map<String, dynamic> result, Color titleColor,
-      Color subtitleColor) {
+  Widget _buildProductCard(
+      Map<String, dynamic> result,
+      Color titleColor,
+      Color subtitleColor,
+      ) {
     final product = (result['product'] is Map)
         ? (result['product'] as Map).cast<String, dynamic>()
         : <String, dynamic>{};
 
     final productName =
-        (product['display'] ?? product['canonical'] ?? 'Producto').toString();
+    (product['display'] ?? product['canonical'] ?? 'Producto').toString();
+    final productCategory = (product['category'] ?? '').toString().trim();
+    final productDescription = (product['description'] ?? '').toString().trim();
+    final productPrice = _formatPrice(product['price']);
+    final productStock = _formatStock(product['lastQty']);
+    final productPhotoKey = (product['photoKey'] ?? '').toString().trim();
+
     final stallName = (result['stallName'] ?? 'Puesto').toString();
     final stallCategory = (result['stallCategory'] ?? '').toString().trim();
     final addressLabel = (result['addressLabel'] ?? '').toString().trim();
     final distanceLabel = _formatDistance(result['distanceMeters'] as num?);
     final stallId = (result['stallId'] ?? '').toString();
+    final coverPhotoKey = (result['coverPhotoKey'] ?? '').toString().trim();
+
+    final imageKey = productPhotoKey.isNotEmpty ? productPhotoKey : coverPhotoKey;
 
     return Material(
       color: Colors.transparent,
@@ -791,88 +932,94 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.all(12),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Product icon
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.orangeAccent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
+                _StorageImageThumb(
+                  storageKey: imageKey,
+                  futureFactory: _getStorageUrl,
+                  fallback: Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: AppColors.orangeAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 24,
+                      color: AppColors.orangeAccent,
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.shopping_bag_outlined,
-                      size: 22, color: AppColors.orangeAccent),
                 ),
                 const SizedBox(width: 12),
-
-                // Info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Text(
+                        productName,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (productDescription.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          productDescription,
+                          style: TextStyle(color: subtitleColor, fontSize: 12),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
-                          Expanded(
-                            child: Text(
-                              productName,
-                              style: TextStyle(
-                                  color: titleColor,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          if (distanceLabel.isNotEmpty)
+                            _MiniTag(
+                              label: distanceLabel,
+                              color: AppColors.primary,
                             ),
-                          ),
-                          if (distanceLabel.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                distanceLabel,
-                                style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                          if (productCategory.isNotEmpty)
+                            _MiniTag(
+                              label: productCategory,
+                              color: AppColors.blueNeon,
                             ),
-                          ],
+                          if (productPrice.isNotEmpty)
+                            _MiniTag(
+                              label: productPrice,
+                              color: AppColors.statusOpen,
+                            ),
+                          if (productStock.isNotEmpty)
+                            _MiniTag(
+                              label: productStock,
+                              color: AppColors.orangeAccent,
+                            ),
                         ],
                       ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(Icons.storefront_outlined,
-                              size: 12, color: subtitleColor),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              [
-                                stallName,
-                                if (stallCategory.isNotEmpty) stallCategory,
-                                if (addressLabel.isNotEmpty) addressLabel,
-                              ].join(' · '),
-                              style:
-                                  TextStyle(color: subtitleColor, fontSize: 12),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 8),
+                      Text(
+                        [
+                          stallName,
+                          if (stallCategory.isNotEmpty) stallCategory,
+                          if (addressLabel.isNotEmpty) addressLabel,
+                        ].join(' · '),
+                        style: TextStyle(color: subtitleColor, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 6),
-
                 GestureDetector(
                   onTap: () => _showLocationSheet(result),
                   child: Container(
@@ -888,8 +1035,11 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                       ),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.map_outlined,
-                        size: 18, color: subtitleColor),
+                    child: Icon(
+                      Icons.map_outlined,
+                      size: 18,
+                      color: subtitleColor,
+                    ),
                   ),
                 ),
               ],
@@ -900,11 +1050,10 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     );
   }
 
-  // ─── List view ─────────────────────────────────────────────────────────────
-
   Widget _buildListView(Color titleColor, Color subtitleColor) {
     if (_hasQuery) {
       if (_results.isEmpty) return _buildEmptyState(subtitleColor);
+
       return ListView.separated(
         itemCount: _results.length,
         padding: EdgeInsets.zero,
@@ -913,7 +1062,9 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
             _buildProductCard(_results[i], titleColor, subtitleColor),
       );
     }
+
     if (_openStalls.isEmpty) return _buildEmptyState(subtitleColor);
+
     return ListView.separated(
       itemCount: _openStalls.length,
       padding: EdgeInsets.zero,
@@ -922,8 +1073,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           _buildStallCard(_openStalls[i], titleColor, subtitleColor),
     );
   }
-
-  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -934,7 +1083,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
     final total = _hasQuery ? _results.length : _openStalls.length;
 
     return Scaffold(
-      // ── Gradient AppBar ──────────────────────────────────────────────────
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: BoxDecoration(
@@ -960,13 +1108,12 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
         actionsIconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
-          // Location indicator
           if (_hasLocation)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(99),
@@ -1003,14 +1150,20 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
           const SizedBox(width: 4),
           IconButton(
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const MarketHowItWorksPage())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const MarketHowItWorksPage(),
+              ),
+            ),
             icon: const Icon(Icons.info_outline_rounded),
             tooltip: 'Cómo funciona',
           ),
@@ -1021,7 +1174,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           ),
         ],
       ),
-
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -1032,7 +1184,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
         ),
         child: Column(
           children: [
-            // ── Search bar ────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
               child: Row(
@@ -1048,21 +1199,26 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                         decoration: InputDecoration(
                           hintText: 'Buscar productos o puestos...',
                           hintStyle:
-                              TextStyle(color: subtitleColor, fontSize: 14),
-                          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                          TextStyle(color: subtitleColor, fontSize: 14),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            size: 20,
+                          ),
                           suffixIcon: _searchController.text.trim().isEmpty
                               ? null
                               : IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() {});
-                                    _loadInitialNearbyStalls();
-                                  },
-                                  icon: const Icon(Icons.close_rounded,
-                                      size: 18),
-                                ),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                              _loadInitialNearbyStalls();
+                            },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                            ),
+                          ),
                           contentPadding:
-                              const EdgeInsets.symmetric(vertical: 0),
+                          const EdgeInsets.symmetric(vertical: 0),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                             borderSide: BorderSide.none,
@@ -1074,7 +1230,9 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                             borderSide: const BorderSide(
-                                color: AppColors.primary, width: 2),
+                              color: AppColors.primary,
+                              width: 2,
+                            ),
                           ),
                           filled: true,
                           fillColor: AppThemeColors.inputFill(context),
@@ -1084,29 +1242,28 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Search button
                   _SquareButton(
-                    onTap: (_loading || _gettingLocation)
-                        ? null
-                        : _searchProducts,
+                    onTap: (_loading || _gettingLocation) ? null : _searchProducts,
                     tooltip: _hasQuery ? 'Buscar' : 'Ver cercanos',
                     color: AppColors.orangeAccent,
                     child: _loading
                         ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                         : Icon(
-                            _hasQuery
-                                ? Icons.search_rounded
-                                : Icons.near_me_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
+                      _hasQuery
+                          ? Icons.search_rounded
+                          : Icons.near_me_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 6),
-                  // Filter button
                   _SquareButton(
                     onTap: _showFiltersSheet,
                     tooltip: 'Filtros',
@@ -1125,8 +1282,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                 ],
               ),
             ),
-
-            // ── Results meta bar ──────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
               child: Row(
@@ -1146,25 +1301,24 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                         if (_hasLoadedOnce && !_loading)
                           Text(
                             '$total resultado${total == 1 ? '' : 's'}',
-                            style: TextStyle(
-                                color: subtitleColor, fontSize: 12),
+                            style: TextStyle(color: subtitleColor, fontSize: 12),
                           ),
                       ],
                     ),
                   ),
-                  // Refresh location
                   IconButton(
-                    onPressed: (_gettingLocation || _loading)
-                        ? null
-                        : _ensureLocation,
-                    icon: Icon(Icons.my_location_rounded,
-                        size: 20, color: subtitleColor),
+                    onPressed:
+                    (_gettingLocation || _loading) ? null : _ensureLocation,
+                    icon: Icon(
+                      Icons.my_location_rounded,
+                      size: 20,
+                      color: subtitleColor,
+                    ),
                     tooltip: 'Actualizar ubicación',
                     padding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
                   ),
                   const SizedBox(width: 4),
-                  // Toggle lista / mapa — compact pill
                   Container(
                     height: 34,
                     decoration: BoxDecoration(
@@ -1202,8 +1356,6 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
                 ],
               ),
             ),
-
-            // ── Results area ──────────────────────────────────────────────
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
@@ -1219,7 +1371,131 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+class _StorageImageThumb extends StatelessWidget {
+  const _StorageImageThumb({
+    required this.storageKey,
+    required this.futureFactory,
+    required this.fallback,
+  });
+
+  final String storageKey;
+  final Future<String?> Function(String key) futureFactory;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    if (storageKey.trim().isEmpty) {
+      return fallback;
+    }
+
+    return FutureBuilder<String?>(
+      future: futureFactory(storageKey),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+
+        if (url == null || url.isEmpty) {
+          return fallback;
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.network(
+            url,
+            width: 76,
+            height: 76,
+            fit: BoxFit.cover,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GradientInitialBox extends StatelessWidget {
+  const _GradientInitialBox({required this.initials});
+
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 76,
+      height: 76,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, AppColors.blueNeon],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 24,
+        ),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniTag extends StatelessWidget {
+  const _MiniTag({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
 
 class _SquareButton extends StatelessWidget {
   const _SquareButton({
@@ -1253,10 +1529,10 @@ class _SquareButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: outlined
                 ? Border.all(
-                    color: Theme.of(context)
-                        .dividerColor
-                        .withValues(alpha: 0.4),
-                  )
+              color: Theme.of(context)
+                  .dividerColor
+                  .withValues(alpha: 0.4),
+            )
                 : null,
           ),
           alignment: Alignment.center,
@@ -1287,14 +1563,18 @@ class _ToggleTab extends StatelessWidget {
         width: 40,
         height: 34,
         decoration: BoxDecoration(
-          color: active ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+          color: active
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(9),
         ),
         alignment: Alignment.center,
         child: Icon(
           icon,
           size: 18,
-          color: active ? AppColors.primary : AppThemeColors.subtitleColor(context),
+          color: active
+              ? AppColors.primary
+              : AppThemeColors.subtitleColor(context),
         ),
       ),
     );

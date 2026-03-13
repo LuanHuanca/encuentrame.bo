@@ -8,6 +8,7 @@ import '../../../../app/theme.dart';
 import '../../../../core/utils/user_friendly_messages.dart';
 import '../../../../shared/api/rest_client.dart';
 import '../../../../shared/widgets/feedback/app_snackbar.dart';
+import 'market_vendor_profile_page.dart';
 
 class MarketStallDetailPage extends StatefulWidget {
   const MarketStallDetailPage({
@@ -32,11 +33,15 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
   String? _errorMessage;
 
   Map<String, dynamic>? _stall;
+  Map<String, dynamic>? _vendor;
   Map<String, dynamic>? _opening;
   List<Map<String, dynamic>> _products = [];
 
-  String? _stallPhotoUrl;
-  String? _productsPhotoUrl;
+  String? _mainPhotoUrl;
+  String? _openingProductsPhotoUrl;
+  String? _vendorPhotoUrl;
+
+  final Map<String, Future<String?>> _storageUrlCache = {};
 
   @override
   void initState() {
@@ -44,15 +49,24 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
     _load();
   }
 
-  Future<String?> _getStorageUrl(String key) async {
-    try {
-      final response = await Amplify.Storage.getUrl(
-        path: StoragePath.fromString(key),
-      ).result;
-      return response.url.toString();
-    } catch (_) {
-      return null;
+  Future<String?> _getStorageUrl(String key) {
+    final trimmedKey = key.trim();
+
+    if (trimmedKey.isEmpty) {
+      return Future.value(null);
     }
+
+    return _storageUrlCache.putIfAbsent(trimmedKey, () async {
+      try {
+        final response = await Amplify.Storage.getUrl(
+          path: StoragePath.fromString(trimmedKey),
+        ).result;
+
+        return response.url.toString();
+      } catch (_) {
+        return null;
+      }
+    });
   }
 
   String _formatDistance(num? meters) {
@@ -62,11 +76,81 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
     return '${(value / 1000).toStringAsFixed(1)} km';
   }
 
+  String _formatMoney(dynamic value) {
+    if (value == null) return '';
+    final parsed = num.tryParse(value.toString());
+    if (parsed == null) return '';
+    return 'Bs ${parsed % 1 == 0 ? parsed.toInt() : parsed}';
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.isEmpty) return 'Sin registro';
+
+    try {
+      final date = DateTime.parse(iso).toLocal();
+
+      String twoDigits(int value) => value.toString().padLeft(2, '0');
+
+      return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
+          '${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _formatPriceRange(String? value) {
+    switch ((value ?? '').trim()) {
+      case 'economic':
+        return 'Económico';
+      case 'medium':
+        return 'Medio';
+      case 'premium':
+        return 'Premium';
+      default:
+        return '';
+    }
+  }
+
+  String _formatPaymentMethod(String value) {
+    switch (value.trim()) {
+      case 'cash':
+        return 'Efectivo';
+      case 'qr':
+        return 'QR';
+      case 'transfer':
+        return 'Transferencia';
+      default:
+        return value;
+    }
+  }
+
+  String _formatDay(String value) {
+    switch (value.trim()) {
+      case 'mon':
+        return 'Lunes';
+      case 'tue':
+        return 'Martes';
+      case 'wed':
+        return 'Miércoles';
+      case 'thu':
+        return 'Jueves';
+      case 'fri':
+        return 'Viernes';
+      case 'sat':
+        return 'Sábado';
+      case 'sun':
+        return 'Domingo';
+      default:
+        return value;
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _errorMessage = null;
     });
+
     try {
       final response = await _api.get(
         '/market/stalls/${widget.stallId}',
@@ -77,30 +161,45 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
       );
 
       _stall = (response['stall'] as Map?)?.cast<String, dynamic>();
+      _vendor = (response['vendor'] as Map?)?.cast<String, dynamic>();
       _opening = (response['opening'] as Map?)?.cast<String, dynamic>();
 
       final rawProducts =
           (response['products'] as List?)?.cast<dynamic>() ?? const [];
+
       _products = rawProducts
           .map((item) => (item as Map).cast<String, dynamic>())
           .toList();
 
       _products.sort(
-        (a, b) => (a['display'] ?? a['canonical'] ?? '')
+            (a, b) => (a['display'] ?? a['canonical'] ?? '')
             .toString()
             .toLowerCase()
             .compareTo(
-                (b['display'] ?? b['canonical'] ?? '').toString().toLowerCase()),
+          (b['display'] ?? b['canonical'] ?? '').toString().toLowerCase(),
+        ),
       );
 
-      final stallPhotoKey = _opening?['stallPhotoKey'] as String?;
-      final productsPhotoKey = _opening?['productsPhotoKey'] as String?;
+      final mainPhotoKey = (_stall?['mainPhotoKey'] ??
+          _stall?['coverPhotoKey'] ??
+          _opening?['stallPhotoKey'] ??
+          '')
+          .toString();
 
-      _stallPhotoUrl =
-          stallPhotoKey == null ? null : await _getStorageUrl(stallPhotoKey);
-      _productsPhotoUrl = productsPhotoKey == null
+      final openingProductsPhotoKey =
+      (_opening?['productsPhotoKey'] ?? '').toString();
+
+      final vendorPhotoKey = (_vendor?['photoKey'] ?? '').toString();
+
+      _mainPhotoUrl =
+      mainPhotoKey.isEmpty ? null : await _getStorageUrl(mainPhotoKey);
+
+      _openingProductsPhotoUrl = openingProductsPhotoKey.isEmpty
           ? null
-          : await _getStorageUrl(productsPhotoKey);
+          : await _getStorageUrl(openingProductsPhotoKey);
+
+      _vendorPhotoUrl =
+      vendorPhotoKey.isEmpty ? null : await _getStorageUrl(vendorPhotoKey);
     } on ApiClientException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
       _errorMessage = UserFriendlyMessages.fromApiError(error);
@@ -108,8 +207,39 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
       _errorMessage = UserFriendlyMessages.fromGenericError(error);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  Future<void> _openVendorProfile() async {
+    final vendorUserId = (_vendor?['userId'] ?? '').toString().trim();
+    if (vendorUserId.isEmpty) return;
+
+    final selectedStallId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarketVendorProfilePage(
+          vendorUserId: vendorUserId,
+          userLat: widget.userLat,
+          userLng: widget.userLng,
+        ),
+      ),
+    );
+
+    if (!mounted || selectedStallId == null || selectedStallId.isEmpty) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarketStallDetailPage(
+          stallId: selectedStallId,
+          userLat: widget.userLat,
+          userLng: widget.userLng,
+        ),
+      ),
+    );
   }
 
   @override
@@ -133,8 +263,11 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.store_mall_directory_outlined,
-                    size: 52, color: subtitleColor),
+                Icon(
+                  Icons.store_mall_directory_outlined,
+                  size: 52,
+                  color: subtitleColor,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage ?? 'No se pudo cargar el puesto.',
@@ -155,19 +288,26 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
     }
 
     final stall = _stall!;
+    final vendor = _vendor;
+
     final name = (stall['name'] ?? 'Puesto').toString();
     final category = (stall['category'] ?? '').toString().trim();
     final description = (stall['description'] ?? '').toString().trim();
     final address = (stall['addressLabel'] ?? '').toString().trim();
     final distance = _formatDistance(stall['distanceMeters'] as num?);
     final isOpen = stall['isOpen'] == true;
+    final referenceText = (stall['referenceText'] ?? '').toString().trim();
+    final priceRange = _formatPriceRange(stall['priceRange']?.toString());
+    final paymentMethods =
+    ((stall['paymentMethods'] as List?) ?? const []).cast<dynamic>();
+    final schedule = ((stall['schedule'] as List?) ?? const []).cast<dynamic>();
 
     final lat = (stall['lat'] as num?)?.toDouble();
     final lng = (stall['lng'] as num?)?.toDouble();
     final point = (lat != null && lng != null) ? LatLng(lat, lng) : null;
 
-    // Avatar initial
-    final initials = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
+    final initials =
+    name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
 
     return Scaffold(
       appBar: AppBar(
@@ -186,7 +326,9 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
         title: Text(
           name,
           style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w800),
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actionsIconTheme: const IconThemeData(color: Colors.white),
@@ -213,7 +355,38 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
             children: [
-              // ── Hero info card ─────────────────────────────────────────
+              if (_mainPhotoUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Image.network(
+                    _mainPhotoUrl!,
+                    height: 220,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              else
+                Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.blueNeon],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 40,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 14),
               Container(
                 decoration: BoxDecoration(
                   color: AppThemeColors.inputFill(context),
@@ -224,222 +397,315 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
                         .withValues(alpha: 0.2),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    // Header gradient strip
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isDark
-                              ? [
-                                  AppColors.primaryDark.withValues(alpha: 0.8),
-                                  AppColors.blueSurface.withValues(alpha: 0.8),
-                                ]
-                              : [
-                                  AppColors.primary.withValues(alpha: 0.08),
-                                  AppColors.blueNeon.withValues(alpha: 0.06),
-                                ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
                         ),
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(22)),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          // Avatar
+                          if (category.isNotEmpty)
+                            _InfoPill(
+                              label: category,
+                              color: AppColors.blueNeon,
+                            ),
+                          _InfoPill(
+                            label: isOpen ? 'Abierto' : 'Cerrado',
+                            color: isOpen
+                                ? AppColors.statusOpen
+                                : AppColors.statusClosed,
+                            icon: isOpen
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.cancel_outlined,
+                          ),
+                          if (distance.isNotEmpty)
+                            _InfoPill(
+                              label: distance,
+                              color: AppColors.orangeBright,
+                              icon: Icons.near_me_rounded,
+                            ),
+                          if (priceRange.isNotEmpty)
+                            _InfoPill(
+                              label: priceRange,
+                              color: AppColors.primary,
+                            ),
+                        ],
+                      ),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          description,
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: 14,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                      if (address.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _IconRow(
+                          icon: Icons.place_outlined,
+                          title: 'Ubicación',
+                          value: address,
+                          action: IconButton(
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: address),
+                              );
+
+                              if (!context.mounted) return;
+                              AppSnackbar.success(context, 'Dirección copiada.');
+                            },
+                            icon: const Icon(Icons.copy_rounded),
+                            tooltip: 'Copiar dirección',
+                          ),
+                        ),
+                      ],
+                      if (referenceText.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _IconRow(
+                          icon: Icons.info_outline_rounded,
+                          title: 'Referencia',
+                          value: referenceText,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (vendor != null) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(
+                  label: 'Vendedor',
+                  titleColor: titleColor,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppThemeColors.inputFill(context),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .dividerColor
+                          .withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        if (_vendorPhotoUrl != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.network(
+                              _vendorPhotoUrl!,
+                              width: 54,
+                              height: 54,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        else
                           Container(
-                            width: 52,
-                            height: 52,
+                            width: 54,
+                            height: 54,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [AppColors.primary, AppColors.blueNeon],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
                             child: Text(
-                              initials,
+                              (vendor['displayName'] ?? 'V')
+                                  .toString()
+                                  .trim()
+                                  .characters
+                                  .first
+                                  .toUpperCase(),
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w800,
                                 fontSize: 22,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  name,
-                                  style: TextStyle(
-                                    color: titleColor,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 20,
-                                  ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (vendor['displayName'] ?? 'Vendedor').toString(),
+                                style: TextStyle(
+                                  color: titleColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
                                 ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: [
-                                    if (category.isNotEmpty)
-                                      _InfoPill(
-                                        label: category,
-                                        color: AppColors.blueNeon,
-                                      ),
-                                    _InfoPill(
-                                      label: isOpen ? 'Abierto' : 'Cerrado',
-                                      color: isOpen
-                                          ? AppColors.statusOpen
-                                          : AppColors.statusClosed,
-                                      icon: isOpen
-                                          ? Icons.check_circle_outline_rounded
-                                          : Icons.cancel_outlined,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  if ((vendor['city'] ?? '').toString().trim().isNotEmpty)
+                                    (vendor['city'] ?? '').toString().trim(),
+                                  if ((vendor['zone'] ?? '').toString().trim().isNotEmpty)
+                                    (vendor['zone'] ?? '').toString().trim(),
+                                ].join(' · '),
+                                style: TextStyle(
+                                  color: subtitleColor,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  if ((vendor['publicTagline'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty)
+                                    _MiniTag(
+                                      label: (vendor['publicTagline'] ?? '')
+                                          .toString(),
+                                      color: AppColors.blueNeon,
                                     ),
-                                    if (distance.isNotEmpty)
-                                      _InfoPill(
-                                        label: distance,
-                                        color: AppColors.orangeBright,
-                                        icon: Icons.near_me_rounded,
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                  if ((vendor['stallCount'] ?? 0) != 0)
+                                    _MiniTag(
+                                      label:
+                                      '${vendor['stallCount']} puesto(s)',
+                                      color: AppColors.orangeAccent,
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-
-                    // Details section
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (description.isNotEmpty) ...[
-                            Text(
-                              description,
-                              style: TextStyle(
-                                  color: subtitleColor, fontSize: 14,
-                                  height: 1.4),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          if (address.isNotEmpty)
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(Icons.place_outlined,
-                                    size: 18, color: AppColors.primary),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    address,
-                                    style: TextStyle(
-                                        color: subtitleColor, fontSize: 13),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                GestureDetector(
-                                  onTap: () async {
-                                    await Clipboard.setData(
-                                        ClipboardData(text: address));
-                                    if (!context.mounted) return;
-                                    AppSnackbar.success(
-                                        context, 'Dirección copiada.');
-                                  },
-                                  child: Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: const Icon(Icons.copy_rounded,
-                                        size: 16, color: AppColors.primary),
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Map ────────────────────────────────────────────────────
-              if (point != null) ...[
-                const SizedBox(height: 14),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: SizedBox(
-                    height: 200,
-                    child: FlutterMap(
-                      options: MapOptions(
-                          initialCenter: point, initialZoom: 16),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'encuentrame.bo',
                         ),
-                        MarkerLayer(markers: [
-                          Marker(
-                            point: point,
-                            width: 44,
-                            height: 44,
-                            child: const Icon(Icons.location_pin,
-                                size: 40, color: AppColors.orangeAccent),
-                          ),
-                        ]),
+                        const SizedBox(width: 8),
+                        FilledButton.tonal(
+                          onPressed: _openVendorProfile,
+                          child: const Text('Ver perfil'),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ],
-
-              // ── Photos ─────────────────────────────────────────────────
-              if (_stallPhotoUrl != null || _productsPhotoUrl != null) ...[
-                const SizedBox(height: 20),
-                _SectionLabel(label: 'Fotos del puesto', titleColor: titleColor),
+              if (paymentMethods.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(
+                  label: 'Métodos de pago',
+                  titleColor: titleColor,
+                ),
                 const SizedBox(height: 10),
-                if (_stallPhotoUrl != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      _stallPhotoUrl!,
-                      height: 180,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: paymentMethods
+                      .map(
+                        (item) => _MiniTag(
+                      label: _formatPaymentMethod(item.toString()),
+                      color: AppColors.statusOpen,
                     ),
-                  ),
-                if (_productsPhotoUrl != null) ...[
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      _productsPhotoUrl!,
-                      height: 180,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ],
+                  )
+                      .toList(),
+                ),
               ],
+              if (schedule.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(
+                  label: 'Horarios',
+                  titleColor: titleColor,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppThemeColors.inputFill(context),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    children: schedule.map((item) {
+                      final row = (item as Map).cast<String, dynamic>();
+                      final day = _formatDay((row['day'] ?? '').toString());
+                      final from = (row['from'] ?? '').toString();
+                      final to = (row['to'] ?? '').toString();
 
-              // ── Products ───────────────────────────────────────────────
+                      return ListTile(
+                        dense: true,
+                        title: Text(day),
+                        trailing: Text('$from - $to'),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+              if (point != null) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(
+                  label: 'Mapa',
+                  titleColor: titleColor,
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SizedBox(
+                    height: 210,
+                    child: FlutterMap(
+                      options: MapOptions(
+                        initialCenter: point,
+                        initialZoom: 16,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'encuentrame.bo',
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: point,
+                              width: 44,
+                              height: 44,
+                              child: const Icon(
+                                Icons.location_pin,
+                                size: 40,
+                                color: AppColors.orangeAccent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (_openingProductsPhotoUrl != null) ...[
+                const SizedBox(height: 16),
+                _SectionLabel(
+                  label: 'Foto de productos',
+                  titleColor: titleColor,
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.network(
+                    _openingProductsPhotoUrl!,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               _SectionLabel(
                 label: 'Productos del puesto',
@@ -461,8 +727,11 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory_2_outlined,
-                          size: 22, color: subtitleColor),
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 22,
+                        color: subtitleColor,
+                      ),
                       const SizedBox(width: 12),
                       Text(
                         'Este puesto no tiene productos visibles.',
@@ -475,17 +744,18 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
                 ...List.generate(_products.length, (index) {
                   final product = _products[index];
                   final productName =
-                      (product['display'] ?? product['canonical'] ?? 'Producto')
-                          .toString();
+                  (product['display'] ?? product['canonical'] ?? 'Producto')
+                      .toString();
                   final productCategory =
-                      (product['category'] ?? '').toString().trim();
+                  (product['category'] ?? '').toString().trim();
                   final productDescription =
-                      (product['description'] ?? '').toString().trim();
+                  (product['description'] ?? '').toString().trim();
                   final qty = (product['lastQty'] ?? '').toString().trim();
-                  final price = product['price'];
+                  final price = _formatMoney(product['price']);
+                  final photoKey = (product['photoKey'] ?? '').toString();
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.only(bottom: 10),
                     child: Container(
                       decoration: BoxDecoration(
                         color: AppThemeColors.inputFill(context),
@@ -497,93 +767,59 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.all(12),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Number badge
-                            Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                color: AppColors.orangeAccent
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                '${index + 1}',
-                                style: const TextStyle(
-                                  color: AppColors.orangeAccent,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                ),
-                              ),
+                            _StorageProductImage(
+                              storageKey: photoKey,
+                              futureFactory: _getStorageUrl,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          productName,
-                                          style: TextStyle(
-                                            color: titleColor,
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ),
-                                      if (price != null) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.statusOpen
-                                                .withValues(alpha: 0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            'Bs ${price.toString()}',
-                                            style: const TextStyle(
-                                              color: AppColors.statusOpen,
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  if (productCategory.isNotEmpty ||
-                                      qty.isNotEmpty) ...[
-                                    const SizedBox(height: 5),
-                                    Wrap(
-                                      spacing: 6,
-                                      children: [
-                                        if (productCategory.isNotEmpty)
-                                          _MiniTag(label: productCategory),
-                                        if (qty.isNotEmpty)
-                                          _MiniTag(
-                                              label: 'x$qty',
-                                              color: AppColors.blueNeon),
-                                      ],
+                                  Text(
+                                    productName,
+                                    style: TextStyle(
+                                      color: titleColor,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
                                     ),
-                                  ],
+                                  ),
                                   if (productDescription.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 4),
                                     Text(
                                       productDescription,
                                       style: TextStyle(
-                                          color: subtitleColor, fontSize: 12),
+                                        color: subtitleColor,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ],
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (productCategory.isNotEmpty)
+                                        _MiniTag(
+                                          label: productCategory,
+                                          color: AppColors.blueNeon,
+                                        ),
+                                      if (qty.isNotEmpty)
+                                        _MiniTag(
+                                          label: 'x$qty',
+                                          color: AppColors.orangeAccent,
+                                        ),
+                                      if (price.isNotEmpty)
+                                        _MiniTag(
+                                          label: price,
+                                          color: AppColors.statusOpen,
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -593,6 +829,27 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
                     ),
                   );
                 }),
+              if (_opening != null) ...[
+                const SizedBox(height: 20),
+                _SectionLabel(
+                  label: 'Última apertura',
+                  titleColor: titleColor,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppThemeColors.inputFill(context),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.update_outlined),
+                    title: const Text('Actualizado'),
+                    subtitle: Text(
+                      _formatDate(_opening?['openedAt']?.toString()),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -601,10 +858,124 @@ class _MarketStallDetailPageState extends State<MarketStallDetailPage> {
   }
 }
 
-// ─── Shared widgets ──────────────────────────────────────────────────────────
+class _StorageProductImage extends StatelessWidget {
+  const _StorageProductImage({
+    required this.storageKey,
+    required this.futureFactory,
+  });
+
+  final String storageKey;
+  final Future<String?> Function(String key) futureFactory;
+
+  @override
+  Widget build(BuildContext context) {
+    if (storageKey.trim().isEmpty) {
+      return Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: AppColors.orangeAccent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.shopping_bag_outlined,
+          color: AppColors.orangeAccent,
+        ),
+      );
+    }
+
+    return FutureBuilder<String?>(
+      future: futureFactory(storageKey),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+
+        if (url == null || url.isEmpty) {
+          return Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: AppColors.orangeAccent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.shopping_bag_outlined,
+              color: AppColors.orangeAccent,
+            ),
+          );
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.network(
+            url,
+            width: 72,
+            height: 72,
+            fit: BoxFit.cover,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _IconRow extends StatelessWidget {
+  const _IconRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitleColor = AppThemeColors.subtitleColor(context);
+    final titleColor = AppThemeColors.titleColor(context);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: titleColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(color: subtitleColor, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        if (action != null) action!,
+      ],
+    );
+  }
+}
 
 class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.label, required this.color, this.icon});
+  const _InfoPill({
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
   final String label;
   final Color color;
   final IconData? icon;
@@ -645,6 +1016,7 @@ class _SectionLabel extends StatelessWidget {
     required this.titleColor,
     this.count,
   });
+
   final String label;
   final Color titleColor;
   final int? count;
@@ -685,22 +1057,29 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _MiniTag extends StatelessWidget {
-  const _MiniTag({required this.label, this.color});
+  const _MiniTag({
+    required this.label,
+    required this.color,
+  });
+
   final String label;
-  final Color? color;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? AppThemeColors.subtitleColor(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
-        style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

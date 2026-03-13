@@ -57,6 +57,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
   bool get _hasLocation => _position != null;
   bool get _hasStallPhoto => _stallPhotoKey != null;
   bool get _hasProductsPhoto => _productsPhotoKey != null;
+  bool get _hasInventory => _inventoryController.text.trim().isNotEmpty;
 
   bool get _canSubmit {
     return !_openingStall &&
@@ -66,7 +67,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
         _hasLocation &&
         _hasStallPhoto &&
         _hasProductsPhoto &&
-        _inventoryController.text.trim().isNotEmpty;
+        _hasInventory;
   }
 
   @override
@@ -74,13 +75,19 @@ class _OpenStallPageState extends State<OpenStallPage> {
     super.initState();
     _initializeSpeech();
     _ensureLocation();
+    _inventoryController.addListener(_refresh);
   }
 
   @override
   void dispose() {
+    _inventoryController.removeListener(_refresh);
     _inventoryController.dispose();
     _speech.stop();
     super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _initializeSpeech() async {
@@ -88,11 +95,9 @@ class _OpenStallPageState extends State<OpenStallPage> {
       final available = await _speech.initialize();
 
       if (!mounted) return;
-
       setState(() => _speechReady = available);
     } catch (_) {
       if (!mounted) return;
-
       setState(() => _speechReady = false);
     }
   }
@@ -107,7 +112,6 @@ class _OpenStallPageState extends State<OpenStallPage> {
       await _speech.stop();
 
       if (!mounted) return;
-
       setState(() => _isListening = false);
       return;
     }
@@ -130,7 +134,6 @@ class _OpenStallPageState extends State<OpenStallPage> {
       localeId: localeId,
       onResult: (result) {
         final text = result.recognizedWords.trim();
-
         if (text.isEmpty) return;
 
         _inventoryController.text = text;
@@ -139,13 +142,11 @@ class _OpenStallPageState extends State<OpenStallPage> {
         );
 
         if (!mounted) return;
-
         setState(() {});
       },
     );
 
     if (!mounted) return;
-
     setState(() => _isListening = true);
   }
 
@@ -187,13 +188,11 @@ class _OpenStallPageState extends State<OpenStallPage> {
       );
 
       if (!mounted) return;
-
       setState(() => _position = position);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'No se pudo obtener la ubicación.');
     } finally {
       if (mounted) {
@@ -211,13 +210,11 @@ class _OpenStallPageState extends State<OpenStallPage> {
       );
 
       if (pickedFile == null) return null;
-
       return File(pickedFile.path);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return null;
-
       setState(() => _errorMessage = 'No se pudo abrir la cámara.');
       return null;
     }
@@ -257,19 +254,16 @@ class _OpenStallPageState extends State<OpenStallPage> {
       );
 
       if (!mounted) return;
-
       setState(() => _stallPhotoKey = key);
     } on StorageException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'Error subiendo la foto del puesto.');
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'Error subiendo la foto del puesto.');
     } finally {
       if (mounted) {
@@ -297,19 +291,16 @@ class _OpenStallPageState extends State<OpenStallPage> {
       );
 
       if (!mounted) return;
-
       setState(() => _productsPhotoKey = key);
     } on StorageException catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'Error subiendo la foto de productos.');
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'Error subiendo la foto de productos.');
     } finally {
       if (mounted) {
@@ -377,14 +368,12 @@ class _OpenStallPageState extends State<OpenStallPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = error.message);
       AppSnackbar.error(context, error.message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-
       setState(() => _errorMessage = 'Error inesperado.');
       AppSnackbar.error(context, 'Error inesperado.');
     } finally {
@@ -394,11 +383,21 @@ class _OpenStallPageState extends State<OpenStallPage> {
     }
   }
 
+  String _buildProgressLabel() {
+    int count = 0;
+    if (_hasLocation) count++;
+    if (_hasStallPhoto) count++;
+    if (_hasProductsPhoto) count++;
+    if (_hasInventory) count++;
+    return '$count/4 listo';
+  }
+
   @override
   Widget build(BuildContext context) {
     final shell = MainShell.of(context);
     final titleColor = AppThemeColors.titleColor(context);
     final subtitleColor = AppThemeColors.subtitleColor(context);
+    final fillColor = AppThemeColors.inputFill(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -424,123 +423,201 @@ class _OpenStallPageState extends State<OpenStallPage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            'Checklist para publicar tu puesto',
-            style: TextStyle(
-              color: titleColor,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppThemeColors.backgroundGradient(context),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Necesitamos tu ubicación actual, dos fotos y el inventario para que los compradores te encuentren.',
-            style: TextStyle(color: subtitleColor),
-          ),
-          const SizedBox(height: 16),
-          _StepCard(
-            title: '1) Ubicación actual',
-            isDone: _hasLocation,
-            isBusy: _gettingLocation,
-            successText: _position == null
-                ? ''
-                : 'Lista • precisión ±${_position!.accuracy.toStringAsFixed(0)} m',
-            pendingText: 'Aún no se obtuvo la ubicación',
-            trailing: IconButton(
-              onPressed: _gettingLocation ? null : _ensureLocation,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Actualizar',
-            ),
-            child: _position == null
-                ? null
-                : Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                'lat ${_position!.latitude.toStringAsFixed(6)} • '
-                    'lng ${_position!.longitude.toStringAsFixed(6)}',
-                style: TextStyle(
-                  color: subtitleColor,
-                  fontSize: 13,
-                ),
+        ),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: fillColor,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.storefront_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.stallName.isEmpty
+                              ? 'Tu puesto'
+                              : widget.stallName,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Checklist para publicar tu puesto ahora mismo.',
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.blueNeon.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _buildProgressLabel(),
+                      style: const TextStyle(
+                        color: AppColors.blueNeon,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          _PhotoStepCard(
-            title: '2) Foto del puesto o carrito',
-            file: _stallPhotoFile,
-            isDone: _hasStallPhoto,
-            isBusy: _uploadingStallPhoto,
-            onTakePhoto: (_openingStall || _uploadingStallPhoto)
-                ? null
-                : _captureStallPhoto,
-          ),
-          const SizedBox(height: 10),
-          _PhotoStepCard(
-            title: '3) Foto de los productos',
-            file: _productsPhotoFile,
-            isDone: _hasProductsPhoto,
-            isBusy: _uploadingProductsPhoto,
-            onTakePhoto: (_openingStall || _uploadingProductsPhoto)
-                ? null
-                : _captureProductsPhoto,
-          ),
-          const SizedBox(height: 12),
-          _StepCard(
-            title: '4) Inventario por voz o texto',
-            isDone: _inventoryController.text.trim().isNotEmpty,
-            isBusy: false,
-            successText: 'Listo',
-            pendingText: 'Describe qué estás vendiendo',
-            trailing: IconButton.filledTonal(
-              onPressed: (_openingStall ||
-                  _uploadingStallPhoto ||
-                  _uploadingProductsPhoto)
-                  ? null
-                  : _toggleVoiceInput,
-              icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
-              tooltip: _isListening ? 'Detener grabación' : 'Hablar',
-            ),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: TextField(
-                controller: _inventoryController,
-                minLines: 3,
-                maxLines: 6,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Inventario',
-                  hintText: 'Ejemplo: pipocas, api, 5 jugos, 3 empanadas',
-                ),
-              ),
-            ),
-          ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
-              _errorMessage!,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
-                fontWeight: FontWeight.w600,
+              'Necesitamos tu ubicación actual, dos fotos y el inventario para que los compradores te encuentren.',
+              style: TextStyle(color: subtitleColor),
+            ),
+            const SizedBox(height: 16),
+            _StepCard(
+              title: '1) Ubicación actual',
+              isDone: _hasLocation,
+              isBusy: _gettingLocation,
+              successText: _position == null
+                  ? ''
+                  : 'Lista • precisión ±${_position!.accuracy.toStringAsFixed(0)} m',
+              pendingText: 'Aún no se obtuvo la ubicación',
+              trailing: IconButton(
+                onPressed: _gettingLocation ? null : _ensureLocation,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Actualizar',
+              ),
+              child: _position == null
+                  ? null
+                  : Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'lat ${_position!.latitude.toStringAsFixed(6)} • '
+                      'lng ${_position!.longitude.toStringAsFixed(6)}',
+                  style: TextStyle(
+                    color: subtitleColor,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _PhotoStepCard(
+              title: '2) Foto del puesto o carrito',
+              subtitle: 'Ayuda a mostrar cómo te verá la gente.',
+              file: _stallPhotoFile,
+              isDone: _hasStallPhoto,
+              isBusy: _uploadingStallPhoto,
+              onTakePhoto: (_openingStall || _uploadingStallPhoto)
+                  ? null
+                  : _captureStallPhoto,
+            ),
+            const SizedBox(height: 10),
+            _PhotoStepCard(
+              title: '3) Foto de los productos',
+              subtitle: 'Sirve para detección visual y vista previa.',
+              file: _productsPhotoFile,
+              isDone: _hasProductsPhoto,
+              isBusy: _uploadingProductsPhoto,
+              onTakePhoto: (_openingStall || _uploadingProductsPhoto)
+                  ? null
+                  : _captureProductsPhoto,
+            ),
+            const SizedBox(height: 12),
+            _StepCard(
+              title: '4) Inventario por voz o texto',
+              isDone: _hasInventory,
+              isBusy: false,
+              successText: 'Listo',
+              pendingText: 'Describe qué estás vendiendo',
+              trailing: IconButton.filledTonal(
+                onPressed: (_openingStall ||
+                    _uploadingStallPhoto ||
+                    _uploadingProductsPhoto)
+                    ? null
+                    : _toggleVoiceInput,
+                icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
+                tooltip: _isListening ? 'Detener grabación' : 'Hablar',
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: TextField(
+                  controller: _inventoryController,
+                  minLines: 3,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Inventario',
+                    hintText:
+                    'Ejemplo: pipocas, api, 5 jugos, 3 empanadas',
+                  ),
+                ),
+              ),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 22),
+            SizedBox(
+              height: 54,
+              child: FilledButton.icon(
+                onPressed: _canSubmit ? _openStall : null,
+                icon: _openingStall
+                    ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Icon(Icons.publish_rounded),
+                label: Text(
+                  _openingStall ? 'Publicando…' : 'Publicar puesto',
+                ),
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _canSubmit ? _openStall : null,
-            icon: _openingStall
-                ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-                : const Icon(Icons.publish_rounded),
-            label: Text(_openingStall ? 'Publicando…' : 'Publicar puesto'),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -570,13 +647,10 @@ class _StepCard extends StatelessWidget {
     final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
+        color: AppThemeColors.inputFill(context),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
@@ -592,6 +666,7 @@ class _StepCard extends StatelessWidget {
                 Icon(
                   isDone ? Icons.check_circle : Icons.error_outline,
                   size: 22,
+                  color: isDone ? AppColors.statusOpen : subtitleColor,
                 ),
               const SizedBox(width: 10),
               Expanded(
@@ -625,6 +700,7 @@ class _StepCard extends StatelessWidget {
 class _PhotoStepCard extends StatelessWidget {
   const _PhotoStepCard({
     required this.title,
+    required this.subtitle,
     required this.file,
     required this.isDone,
     required this.isBusy,
@@ -632,6 +708,7 @@ class _PhotoStepCard extends StatelessWidget {
   });
 
   final String title;
+  final String subtitle;
   final File? file;
   final bool isDone;
   final bool isBusy;
@@ -642,21 +719,18 @@ class _PhotoStepCard extends StatelessWidget {
     final subtitleColor = AppThemeColors.subtitleColor(context);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
+        color: AppThemeColors.inputFill(context),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              width: 78,
-              height: 78,
+              width: 82,
+              height: 82,
               color: Colors.black12,
               child: file == null
                   ? const Icon(Icons.photo_camera_rounded, size: 28)
@@ -673,6 +747,14 @@ class _PhotoStepCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: subtitleColor,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
                 Text(
                   isBusy
                       ? 'Subiendo…'
@@ -700,9 +782,8 @@ class _PhotoStepCard extends StatelessWidget {
             )
           else
             Icon(
-              isDone
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
+              isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: isDone ? AppColors.statusOpen : subtitleColor,
             ),
         ],
       ),

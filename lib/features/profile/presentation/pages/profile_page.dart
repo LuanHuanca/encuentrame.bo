@@ -30,9 +30,19 @@ class _ProfilePageState extends State<ProfilePage>
   String? _errorMessage;
 
   String _userId = '';
-  String _name = '';
+  String _firstName = '';
+  String _lastName = '';
+  String _displayName = '';
   String _email = '';
+  String _phone = '';
+  String _gender = '';
+  String _city = '';
+  String _zone = '';
+  String _birthDate = '';
+  String _photoKey = '';
+  int _profileCompletion = 0;
   String? _updatedAt;
+  String? _photoUrl;
 
   @override
   void initState() {
@@ -57,6 +67,17 @@ class _ProfilePageState extends State<ProfilePage>
     super.dispose();
   }
 
+  Future<String?> _getStorageUrl(String key) async {
+    try {
+      final response = await Amplify.Storage.getUrl(
+        path: StoragePath.fromString(key),
+      ).result;
+      return response.url.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _loadProfile() async {
     setState(() {
       _loading = true;
@@ -66,12 +87,28 @@ class _ProfilePageState extends State<ProfilePage>
     try {
       final response = await _api.get('/users/me');
 
+      final photoKey = (response['photoKey'] ?? '').toString().trim();
+      String? photoUrl;
+      if (photoKey.isNotEmpty) {
+        photoUrl = await _getStorageUrl(photoKey);
+      }
+
       if (!mounted) return;
 
       setState(() {
         _userId = (response['userId'] ?? '').toString();
-        _name = (response['name'] ?? '').toString();
+        _firstName = (response['firstName'] ?? '').toString();
+        _lastName = (response['lastName'] ?? '').toString();
+        _displayName = (response['displayName'] ?? response['name'] ?? '').toString();
         _email = (response['email'] ?? '').toString();
+        _phone = (response['phone'] ?? '').toString();
+        _gender = (response['gender'] ?? '').toString();
+        _city = (response['city'] ?? '').toString();
+        _zone = (response['zone'] ?? '').toString();
+        _birthDate = (response['birthDate'] ?? '').toString();
+        _photoKey = photoKey;
+        _photoUrl = photoUrl;
+        _profileCompletion = (response['profileCompletion'] as num?)?.toInt() ?? 0;
         _updatedAt = response['updatedAt']?.toString();
         _loading = false;
       });
@@ -98,33 +135,19 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  String _buildInitials(String value) {
-    final trimmed = value.trim();
+  String _buildInitials() {
+    final source = _displayName.trim().isNotEmpty ? _displayName : _email;
+    final trimmed = source.trim();
 
     if (trimmed.isEmpty) return 'U';
 
-    final parts = trimmed
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
+    final parts = trimmed.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
 
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
 
-    return trimmed[0].toUpperCase();
-  }
-
-  String _displayName() {
-    final trimmedName = _name.trim();
-    if (trimmedName.isNotEmpty) return trimmedName;
-
-    final trimmedEmail = _email.trim();
-    if (trimmedEmail.isNotEmpty) {
-      return trimmedEmail.split('@').first;
-    }
-
-    return 'Usuario';
+    return parts.first[0].toUpperCase();
   }
 
   String _formatDate(String? iso) {
@@ -132,7 +155,6 @@ class _ProfilePageState extends State<ProfilePage>
 
     try {
       final date = DateTime.parse(iso).toLocal();
-
       String twoDigits(int value) => value.toString().padLeft(2, '0');
 
       return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
@@ -142,13 +164,27 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
+  String _formatGender(String value) {
+    switch (value) {
+      case 'male':
+        return 'Masculino';
+      case 'female':
+        return 'Femenino';
+      case 'other':
+        return 'Otro';
+      case 'prefer_not_to_say':
+        return 'Prefiero no decirlo';
+      default:
+        return value.trim().isEmpty ? 'No definido' : value;
+    }
+  }
+
   Future<void> _copyUserId() async {
     if (_userId.trim().isEmpty) return;
 
     await Clipboard.setData(ClipboardData(text: _userId));
 
     if (!mounted) return;
-
     AppSnackbar.success(context, 'ID copiado.');
   }
 
@@ -157,8 +193,15 @@ class _ProfilePageState extends State<ProfilePage>
       context,
       MaterialPageRoute(
         builder: (_) => EditProfilePage(
-          initialName: _name,
+          initialFirstName: _firstName,
+          initialLastName: _lastName,
           email: _email,
+          initialPhone: _phone,
+          initialGender: _gender,
+          initialCity: _city,
+          initialZone: _zone,
+          initialBirthDate: _birthDate,
+          initialPhotoKey: _photoKey,
         ),
       ),
     );
@@ -197,12 +240,9 @@ class _ProfilePageState extends State<ProfilePage>
     final subtitleColor = AppThemeColors.subtitleColor(context);
     final fillColor = AppThemeColors.inputFill(context);
 
-    final displayName = _displayName();
-    final displayEmail =
-    _email.trim().isNotEmpty ? _email.trim() : 'Sin correo';
-    final initials = _buildInitials(
-      _name.trim().isNotEmpty ? _name : _email,
-    );
+    final displayName = _displayName.trim().isNotEmpty
+        ? _displayName.trim()
+        : (_email.trim().isNotEmpty ? _email.split('@').first : 'Usuario');
 
     return Scaffold(
       appBar: AppBar(
@@ -219,13 +259,9 @@ class _ProfilePageState extends State<ProfilePage>
               }
             },
             icon: Icon(
-              isVendorMode
-                  ? Icons.search_rounded
-                  : Icons.storefront_rounded,
+              isVendorMode ? Icons.search_rounded : Icons.storefront_rounded,
             ),
-            tooltip: isVendorMode
-                ? 'Cambiar a comprador'
-                : 'Cambiar a vendedor',
+            tooltip: isVendorMode ? 'Cambiar a comprador' : 'Cambiar a vendedor',
           ),
           IconButton(
             onPressed: _loading ? null : _loadProfile,
@@ -300,30 +336,38 @@ class _ProfilePageState extends State<ProfilePage>
                     children: [
                       Row(
                         children: [
-                          Container(
-                            width: 68,
-                            height: 68,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: AppColors.blueNeon
-                                  .withValues(alpha: 0.18),
-                              borderRadius:
-                              BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              initials,
-                              style: TextStyle(
-                                color: AppColors.blueNeon,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
+                          if (_photoUrl != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: Image.network(
+                                _photoUrl!,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          else
+                            Container(
+                              width: 72,
+                              height: 72,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: AppColors.blueNeon.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _buildInitials(),
+                                style: const TextStyle(
+                                  color: AppColors.blueNeon,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
-                          ),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   displayName,
@@ -337,7 +381,7 @@ class _ProfilePageState extends State<ProfilePage>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  displayEmail,
+                                  _email.trim().isNotEmpty ? _email.trim() : 'Sin correo',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -350,6 +394,10 @@ class _ProfilePageState extends State<ProfilePage>
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
+                                    _InfoChip(
+                                      icon: Icons.verified_user_outlined,
+                                      label: 'Perfil $_profileCompletion%',
+                                    ),
                                     _InfoChip(
                                       icon: Icons.info_outline,
                                       label: 'Build ${AppInfo.appVersion}',
@@ -377,6 +425,58 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
                 const SizedBox(height: 20),
                 Text(
+                  'Datos personales',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _ProfileInfoCard(
+                  fillColor: fillColor,
+                  titleColor: titleColor,
+                  subtitleColor: subtitleColor,
+                  items: [
+                    _ProfileInfoItem(
+                      icon: Icons.person_outline,
+                      title: 'Nombres',
+                      value: _firstName.trim().isNotEmpty ? _firstName : 'No definido',
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.badge_outlined,
+                      title: 'Apellidos',
+                      value: _lastName.trim().isNotEmpty ? _lastName : 'No definido',
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.phone_outlined,
+                      title: 'Teléfono',
+                      value: _phone.trim().isNotEmpty ? _phone : 'No definido',
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.wc_outlined,
+                      title: 'Género',
+                      value: _formatGender(_gender),
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.location_city_outlined,
+                      title: 'Ciudad',
+                      value: _city.trim().isNotEmpty ? _city : 'No definida',
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.place_outlined,
+                      title: 'Zona',
+                      value: _zone.trim().isNotEmpty ? _zone : 'No definida',
+                    ),
+                    _ProfileInfoItem(
+                      icon: Icons.cake_outlined,
+                      title: 'Fecha de nacimiento',
+                      value: _birthDate.trim().isNotEmpty ? _birthDate : 'No definida',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
                   'Información de cuenta',
                   style: TextStyle(
                     color: titleColor,
@@ -393,7 +493,7 @@ class _ProfilePageState extends State<ProfilePage>
                     _ProfileInfoItem(
                       icon: Icons.email_outlined,
                       title: 'Correo',
-                      value: displayEmail,
+                      value: _email.trim().isNotEmpty ? _email : 'Sin correo',
                     ),
                     _ProfileInfoItem(
                       icon: Icons.update_outlined,
@@ -422,8 +522,7 @@ class _ProfilePageState extends State<ProfilePage>
                     children: [
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'ID de usuario',
@@ -514,10 +613,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.7),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(

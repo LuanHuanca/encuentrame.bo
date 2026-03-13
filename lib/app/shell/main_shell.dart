@@ -17,6 +17,7 @@ class MainShellScope extends InheritedWidget {
   const MainShellScope({
     super.key,
     required this.mode,
+    required this.currentIndex,
     required this.toggleMode,
     required this.setMode,
     required this.setIndex,
@@ -24,11 +25,15 @@ class MainShellScope extends InheritedWidget {
   });
 
   final String mode;
+  final int currentIndex;
   final VoidCallback toggleMode;
   final ValueChanged<String> setMode;
   final ValueChanged<int> setIndex;
 
   String get role => mode;
+
+  bool get isBuyer => mode == MainShellMode.buyer;
+  bool get isVendor => mode == MainShellMode.vendor;
 
   void switchToBuyer() => setMode(MainShellMode.buyer);
   void switchToVendor() => setMode(MainShellMode.vendor);
@@ -39,7 +44,7 @@ class MainShellScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(MainShellScope oldWidget) {
-    return mode != oldWidget.mode;
+    return mode != oldWidget.mode || currentIndex != oldWidget.currentIndex;
   }
 }
 
@@ -64,8 +69,9 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   late String _mode;
   late int _currentIndex;
-  late PageController _pageController;
-  late List<Widget> _pages;
+  late final PageController _pageController;
+
+  List<Widget> get _pages => _buildPages(_mode);
 
   @override
   void initState() {
@@ -75,8 +81,8 @@ class _MainShellState extends State<MainShell> {
         ? MainShellMode.vendor
         : MainShellMode.buyer;
 
-    _pages = _buildPages(_mode);
-    _currentIndex = widget.initialIndex.clamp(0, _pages.length - 1);
+    final safeIndex = widget.initialIndex.clamp(0, _buildPages(_mode).length - 1);
+    _currentIndex = safeIndex;
     _pageController = PageController(initialPage: _currentIndex);
   }
 
@@ -87,11 +93,9 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _toggleMode() {
-    _setMode(
-      _mode == MainShellMode.buyer
-          ? MainShellMode.vendor
-          : MainShellMode.buyer,
-    );
+    _setMode(_mode == MainShellMode.buyer
+        ? MainShellMode.vendor
+        : MainShellMode.buyer);
   }
 
   void _setMode(String nextMode) {
@@ -103,15 +107,15 @@ class _MainShellState extends State<MainShell> {
 
     setState(() {
       _mode = nextMode;
-      _pages = _buildPages(_mode);
       _currentIndex = 0;
-
-      _pageController.dispose();
-      _pageController = PageController(initialPage: _currentIndex);
     });
+
+    _pageController.jumpToPage(0);
   }
 
   void _setIndex(int index) {
+    final pagesLength = _pages.length;
+    if (index < 0 || index >= pagesLength) return;
     if (index == _currentIndex) return;
 
     setState(() => _currentIndex = index);
@@ -125,15 +129,15 @@ class _MainShellState extends State<MainShell> {
 
   List<Widget> _buildPages(String mode) {
     if (mode == MainShellMode.vendor) {
-      return const [
-        _PageWithBottomPadding(child: MyStallsPage()),
-        _PageWithBottomPadding(child: ProfilePage()),
+      return [
+        const _PageWithBottomPadding(child: MyStallsPage()),
+        const _PageWithBottomPadding(child: ProfilePage()),
       ];
     }
 
-    return const [
-      _PageWithBottomPadding(child: MarketSearchPage()),
-      _PageWithBottomPadding(child: ProfilePage()),
+    return [
+      const _PageWithBottomPadding(child: MarketSearchPage()),
+      const _PageWithBottomPadding(child: ProfilePage()),
     ];
   }
 
@@ -187,6 +191,7 @@ class _MainShellState extends State<MainShell> {
 
     return MainShellScope(
       mode: _mode,
+      currentIndex: _currentIndex,
       toggleMode: _toggleMode,
       setMode: _setMode,
       setIndex: _setIndex,
@@ -195,7 +200,11 @@ class _MainShellState extends State<MainShell> {
         body: PageView(
           controller: _pageController,
           physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (index) => setState(() => _currentIndex = index),
+          onPageChanged: (index) {
+            if (_currentIndex != index) {
+              setState(() => _currentIndex = index);
+            }
+          },
           children: _pages,
         ),
         bottomNavigationBar: CurvedNavigationBar(
