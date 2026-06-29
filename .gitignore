@@ -67,7 +67,3 @@ amplify/backend/awscloudformation/build/
 amplify/backend/auth/*/build/
 amplify/\#current-cloud-backend/
 #amplify-do-not-edit-end
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
-.gitignore
