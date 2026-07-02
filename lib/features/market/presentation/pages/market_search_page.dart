@@ -22,7 +22,6 @@ class MarketSearchPage extends StatefulWidget {
 
 class _MarketSearchPageState extends State<MarketSearchPage> {
   static const String _radiusKm = '10';
-  static const String _defaultProductsPerStall = '20';
 
   final RestClient _api = RestClient();
   final TextEditingController _searchController = TextEditingController();
@@ -214,8 +213,7 @@ class _MarketSearchPageState extends State<MarketSearchPage> {
           if (_hasLocation) 'lng': _position!.longitude.toString(),
           'radiusKm': _radiusKm,
           'limit': _limit.toString(),
-          'includeProducts': '1',
-          'productsLimit': _defaultProductsPerStall,
+          'includeProducts': '0',
           if (_selectedCategory != 'Todos') 'category': _selectedCategory,
         },
       );

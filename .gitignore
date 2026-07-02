@@ -60,6 +60,10 @@ amplifyconfiguration.dart
 amplify-build-config.json
 amplify-gradle-config.json
 amplifytools.xcconfig
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
 .secret-*
 **.sample
 # Directorios de build de Amplify (contienen secretos generados)

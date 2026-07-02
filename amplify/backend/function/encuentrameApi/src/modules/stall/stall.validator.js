@@ -1,6 +1,10 @@
 'use strict';
 
 const { AppError } = require('../../shared/errors/app-error');
+const { isOwnedStallImageKey } = require('../../integrations/storage/s3-paths');
+
+const MAX_LOCATION_ACCURACY_METERS = 200;
+const MAX_INVENTORY_TEXT_LENGTH = 2000;
 
 const PAYMENT_METHOD_MAP = {
   efectivo: 'cash',
@@ -380,7 +384,7 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function validateOpenStallInput(payload = {}) {
+function validateOpenStallInput(payload = {}, currentUser = null) {
   const stallId = validateStallId(payload.stallId);
   const lat = toNumber(payload.lat);
   const lng = toNumber(payload.lng);
@@ -390,11 +394,30 @@ function validateOpenStallInput(payload = {}) {
   const productsPhotoKey = String(payload.productsPhotoKey || '').trim();
   const inventoryText = String(payload.inventoryText || '').trim();
   const stallName = String(payload.stallName || '').trim();
+  const idempotencyKey = String(
+    payload.idempotencyKey || payload.requestId || ''
+  ).trim();
 
   if (lat === null || lng === null) {
     throw new AppError({
       code: 'MISSING_LOCATION',
       message: 'Falta ubicación',
+      statusCode: 400,
+    });
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new AppError({
+      code: 'INVALID_LOCATION',
+      message: 'Ubicación fuera de rango',
+      statusCode: 400,
+    });
+  }
+
+  if (accuracy < 0 || accuracy > MAX_LOCATION_ACCURACY_METERS) {
+    throw new AppError({
+      code: 'INVALID_ACCURACY',
+      message: 'La precisión de ubicación debe ser de 200 metros o menos',
       statusCode: 400,
     });
   }
@@ -415,6 +438,38 @@ function validateOpenStallInput(payload = {}) {
     });
   }
 
+  if (inventoryText.length > MAX_INVENTORY_TEXT_LENGTH) {
+    throw new AppError({
+      code: 'INVENTORY_TOO_LONG',
+      message: 'El inventario no puede superar 2000 caracteres',
+      statusCode: 400,
+    });
+  }
+
+  if (!/^[A-Za-z0-9_-]{16,80}$/.test(idempotencyKey)) {
+    throw new AppError({
+      code: 'INVALID_IDEMPOTENCY_KEY',
+      message: 'idempotencyKey inválido',
+      statusCode: 400,
+    });
+  }
+
+  for (const key of [stallPhotoKey, productsPhotoKey]) {
+    if (
+      !isOwnedStallImageKey({
+        key,
+        userId: currentUser?.userId,
+        stallId,
+      })
+    ) {
+      throw new AppError({
+        code: 'INVALID_PHOTO_KEY',
+        message: 'La foto no pertenece al usuario y puesto autenticados',
+        statusCode: 400,
+      });
+    }
+  }
+
   return {
     stallId,
     stallName,
@@ -424,6 +479,7 @@ function validateOpenStallInput(payload = {}) {
     stallPhotoKey,
     productsPhotoKey,
     inventoryText,
+    idempotencyKey,
   };
 }
 

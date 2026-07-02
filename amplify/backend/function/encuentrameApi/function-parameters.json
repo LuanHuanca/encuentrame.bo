@@ -30,38 +30,5 @@
       "environmentVariableName": "BEDROCK_MODEL_ID"
     }
   ],
-  "permissions": {
-    "storage": {
-      "dynamo324f6f26": [
-        "create",
-        "read",
-        "update",
-        "delete"
-      ],
-      "dynamo800bfc2b": [
-        "create",
-        "read",
-        "update",
-        "delete"
-      ],
-      "dynamo81bc09dc": [
-        "create",
-        "read",
-        "update",
-        "delete"
-      ],
-      "s39e8ab6e7": [
-        "create",
-        "read",
-        "update",
-        "delete"
-      ],
-      "dynamof7a7b9aa": [
-        "create",
-        "read",
-        "update",
-        "delete"
-      ]
-    }
-  }
+  "permissions": {}
 }

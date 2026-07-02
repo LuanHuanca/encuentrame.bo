@@ -23,6 +23,7 @@ function skStall(stallId) {
 }
 
 function isOpenProfile(item) {
+  if (item?.currentOpenStatus !== 'OPEN') return false;
   const value = item?.currentOpen;
 
   if (value === true || value === 1 || value === '1') {
@@ -88,7 +89,7 @@ async function listOpenStallProfiles(limit = 400) {
         })
       );
 
-      items.push(...(page.Items || []));
+      items.push(...(page.Items || []).filter(isOpenProfile));
       exclusiveStartKey = page.LastEvaluatedKey;
 
       if (!exclusiveStartKey) {
@@ -98,7 +99,7 @@ async function listOpenStallProfiles(limit = 400) {
 
     return items.slice(0, limit);
   } catch (error) {
-    if (error?.name === 'ValidationException') {
+    if (error?.name === 'ValidationException' && env.ENV === 'dev') {
       return scanStallProfiles(limit, true);
     }
 

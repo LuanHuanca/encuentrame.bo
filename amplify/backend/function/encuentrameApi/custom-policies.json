@@ -7,14 +7,15 @@
       "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
       "dynamodb:Query",
-      "dynamodb:BatchGetItem"
+      "dynamodb:BatchGetItem",
+      "dynamodb:TransactWriteItems"
     ],
     "Resource": [
-      "arn:aws:dynamodb:us-east-1:941570845580:table/users-dev",
-      "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev",
-      "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev",
-      "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev",
-      "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev/index/*"
+      "arn:aws:dynamodb:us-east-1:*:table/users-${env}",
+      "arn:aws:dynamodb:us-east-1:*:table/stalls-${env}",
+      "arn:aws:dynamodb:us-east-1:*:table/openinglogs-${env}",
+      "arn:aws:dynamodb:us-east-1:*:table/products-${env}",
+      "arn:aws:dynamodb:us-east-1:*:table/stalls-${env}/index/*"
     ]
   },
   {
@@ -23,7 +24,7 @@
       "s3:GetObject"
     ],
     "Resource": [
-      "arn:aws:s3:::encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev/*"
+      "arn:aws:s3:::encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-${env}/protected/*/stalls/*"
     ]
   },
   {
@@ -51,7 +52,7 @@
       "geo:SearchPlaceIndexForPosition"
     ],
     "Resource": [
-      "arn:aws:geo:us-east-1:941570845580:place-index/placeIndex4cb8293e-dev"
+      "arn:aws:geo:us-east-1:*:place-index/placeIndex4cb8293e-${env}"
     ]
   }
 ]

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -33,6 +34,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
   final SpeechToText _speech = SpeechToText();
   final ImagePicker _imagePicker = ImagePicker();
   final Uuid _uuid = const Uuid();
+  String _idempotencyKey = const Uuid().v4();
 
   final TextEditingController _inventoryController = TextEditingController();
 
@@ -206,6 +208,8 @@ class _OpenStallPageState extends State<OpenStallPage> {
       final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
         imageQuality: 85,
+        maxWidth: 2048,
+        maxHeight: 2048,
         preferredCameraDevice: CameraDevice.rear,
       );
 
@@ -224,8 +228,14 @@ class _OpenStallPageState extends State<OpenStallPage> {
     required File file,
     required String kind,
   }) async {
+    final session = await Amplify.Auth.fetchAuthSession();
+    if (session is! CognitoAuthSession) {
+      throw StateError('No se pudo validar la identidad.');
+    }
+    final identityId = session.identityIdResult.value;
     final key =
-        'public/vendor/${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
+        'protected/$identityId/stalls/${widget.stallId}/'
+        '${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4()}_$kind.jpg';
 
     final result = await Amplify.Storage.uploadFile(
       localFile: AWSFile.fromPath(file.path),
@@ -340,7 +350,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
         throw ApiClientException('Falta el inventario.');
       }
 
-      await _api.post('/stalls/open', {
+      final response = await _api.post('/stalls/open', {
         'stallId': widget.stallId,
         'stallName': widget.stallName,
         'lat': _position!.latitude,
@@ -349,9 +359,22 @@ class _OpenStallPageState extends State<OpenStallPage> {
         'stallPhotoKey': _stallPhotoKey,
         'productsPhotoKey': _productsPhotoKey,
         'inventoryText': inventoryText,
+        'idempotencyKey': _idempotencyKey,
       });
 
       if (!mounted) return;
+
+      if (response['status'] == 'REVIEW') {
+        setState(() {
+          _errorMessage =
+              'La foto no pasó la moderación. Toma una nueva foto del puesto.';
+          _stallPhotoFile = null;
+          _stallPhotoKey = null;
+          _idempotencyKey = _uuid.v4();
+        });
+        AppSnackbar.error(context, _errorMessage!);
+        return;
+      }
 
       AppSnackbar.success(context, 'Puesto abierto.');
 
@@ -368,7 +391,12 @@ class _OpenStallPageState extends State<OpenStallPage> {
       UserFriendlyMessages.logToConsole(error, stackTrace);
 
       if (!mounted) return;
-      setState(() => _errorMessage = error.message);
+      setState(() {
+        _errorMessage = error.message;
+        if (error.statusCode != null && error.code != 'OPEN_IN_PROGRESS') {
+          _idempotencyKey = _uuid.v4();
+        }
+      });
       AppSnackbar.error(context, error.message);
     } catch (error, stackTrace) {
       UserFriendlyMessages.logToConsole(error, stackTrace);
@@ -581,6 +609,7 @@ class _OpenStallPageState extends State<OpenStallPage> {
                   controller: _inventoryController,
                   minLines: 3,
                   maxLines: 6,
+                  maxLength: 2000,
                   decoration: const InputDecoration(
                     labelText: 'Inventario',
                     hintText:

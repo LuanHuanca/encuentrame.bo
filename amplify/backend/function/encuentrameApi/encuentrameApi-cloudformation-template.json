@@ -313,14 +313,20 @@
                 "dynamodb:UpdateItem",
                 "dynamodb:DeleteItem",
                 "dynamodb:Query",
-                "dynamodb:BatchGetItem"
+                "dynamodb:BatchGetItem",
+                "dynamodb:TransactWriteItems"
               ],
               "Resource": [
-                "arn:aws:dynamodb:us-east-1:941570845580:table/users-dev",
-                "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev",
-                "arn:aws:dynamodb:us-east-1:941570845580:table/openinglogs-dev",
-                "arn:aws:dynamodb:us-east-1:941570845580:table/products-dev",
-                "arn:aws:dynamodb:us-east-1:941570845580:table/stalls-dev/index/*"
+                { "Ref": "storagedynamo324f6f26Arn" },
+                { "Ref": "storagedynamo800bfc2bArn" },
+                { "Ref": "storagedynamo81bc09dcArn" },
+                { "Ref": "storagedynamof7a7b9aaArn" },
+                {
+                  "Fn::Join": [
+                    "/",
+                    [{ "Ref": "storagedynamo800bfc2bArn" }, "index/*"]
+                  ]
+                }
               ]
             },
             {
@@ -329,7 +335,16 @@
                 "s3:GetObject"
               ],
               "Resource": [
-                "arn:aws:s3:::encuentrameboe3902bbf321844389a4773fb8a5ee198f3550-dev/*"
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:s3:::",
+                      { "Ref": "storages39e8ab6e7BucketName" },
+                      "/protected/*/stalls/*"
+                    ]
+                  ]
+                }
               ]
             },
             {
@@ -348,7 +363,9 @@
                 "bedrock:InvokeModel"
               ],
               "Resource": [
-                "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-lite-v1"
+                {
+                  "Fn::Sub": "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-lite-v1"
+                }
               ]
             },
             {
@@ -357,7 +374,9 @@
                 "geo:SearchPlaceIndexForPosition"
               ],
               "Resource": [
-                "arn:aws:geo:us-east-1:941570845580:place-index/placeIndex4cb8293e-dev"
+                {
+                  "Fn::Sub": "arn:aws:geo:${AWS::Region}:${AWS::AccountId}:place-index/placeIndex4cb8293e-${env}"
+                }
               ]
             }
           ]
@@ -369,212 +388,6 @@
         ]
       },
       "DependsOn": "LambdaExecutionRole"
-    },
-    "AmplifyResourcesPolicy": {
-      "DependsOn": [
-        "LambdaExecutionRole"
-      ],
-      "Type": "AWS::IAM::Policy",
-      "Properties": {
-        "PolicyName": "amplify-lambda-execution-policy",
-        "Roles": [
-          {
-            "Ref": "LambdaExecutionRole"
-          }
-        ],
-        "PolicyDocument": {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "dynamodb:Put*",
-                "dynamodb:Create*",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PartiQLInsert",
-                "dynamodb:Get*",
-                "dynamodb:BatchGetItem",
-                "dynamodb:List*",
-                "dynamodb:Describe*",
-                "dynamodb:Scan",
-                "dynamodb:Query",
-                "dynamodb:PartiQLSelect",
-                "dynamodb:Update*",
-                "dynamodb:RestoreTable*",
-                "dynamodb:PartiQLUpdate",
-                "dynamodb:Delete*",
-                "dynamodb:PartiQLDelete"
-              ],
-              "Resource": [
-                {
-                  "Ref": "storagedynamo324f6f26Arn"
-                },
-                {
-                  "Fn::Join": [
-                    "/",
-                    [
-                      {
-                        "Ref": "storagedynamo324f6f26Arn"
-                      },
-                      "index/*"
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "dynamodb:Put*",
-                "dynamodb:Create*",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PartiQLInsert",
-                "dynamodb:Get*",
-                "dynamodb:BatchGetItem",
-                "dynamodb:List*",
-                "dynamodb:Describe*",
-                "dynamodb:Scan",
-                "dynamodb:Query",
-                "dynamodb:PartiQLSelect",
-                "dynamodb:Update*",
-                "dynamodb:RestoreTable*",
-                "dynamodb:PartiQLUpdate",
-                "dynamodb:Delete*",
-                "dynamodb:PartiQLDelete"
-              ],
-              "Resource": [
-                {
-                  "Ref": "storagedynamo800bfc2bArn"
-                },
-                {
-                  "Fn::Join": [
-                    "/",
-                    [
-                      {
-                        "Ref": "storagedynamo800bfc2bArn"
-                      },
-                      "index/*"
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "dynamodb:Put*",
-                "dynamodb:Create*",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PartiQLInsert",
-                "dynamodb:Get*",
-                "dynamodb:BatchGetItem",
-                "dynamodb:List*",
-                "dynamodb:Describe*",
-                "dynamodb:Scan",
-                "dynamodb:Query",
-                "dynamodb:PartiQLSelect",
-                "dynamodb:Update*",
-                "dynamodb:RestoreTable*",
-                "dynamodb:PartiQLUpdate",
-                "dynamodb:Delete*",
-                "dynamodb:PartiQLDelete"
-              ],
-              "Resource": [
-                {
-                  "Ref": "storagedynamo81bc09dcArn"
-                },
-                {
-                  "Fn::Join": [
-                    "/",
-                    [
-                      {
-                        "Ref": "storagedynamo81bc09dcArn"
-                      },
-                      "index/*"
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
-              "Effect": "Allow",
-              "Action": "s3:ListBucket",
-              "Resource": [
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      "arn:aws:s3:::",
-                      {
-                        "Ref": "storages39e8ab6e7BucketName"
-                      }
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "s3:PutObject",
-                "s3:GetObject",
-                "s3:DeleteObject"
-              ],
-              "Resource": [
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      "arn:aws:s3:::",
-                      {
-                        "Ref": "storages39e8ab6e7BucketName"
-                      },
-                      "/*"
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "dynamodb:Put*",
-                "dynamodb:Create*",
-                "dynamodb:BatchWriteItem",
-                "dynamodb:PartiQLInsert",
-                "dynamodb:Get*",
-                "dynamodb:BatchGetItem",
-                "dynamodb:List*",
-                "dynamodb:Describe*",
-                "dynamodb:Scan",
-                "dynamodb:Query",
-                "dynamodb:PartiQLSelect",
-                "dynamodb:Update*",
-                "dynamodb:RestoreTable*",
-                "dynamodb:PartiQLUpdate",
-                "dynamodb:Delete*",
-                "dynamodb:PartiQLDelete"
-              ],
-              "Resource": [
-                {
-                  "Ref": "storagedynamof7a7b9aaArn"
-                },
-                {
-                  "Fn::Join": [
-                    "/",
-                    [
-                      {
-                        "Ref": "storagedynamof7a7b9aaArn"
-                      },
-                      "index/*"
-                    ]
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      }
     }
   },
   "Outputs": {

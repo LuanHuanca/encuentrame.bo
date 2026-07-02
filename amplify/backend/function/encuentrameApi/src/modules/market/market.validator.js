@@ -33,13 +33,21 @@ function validateNearbyQuery(query = {}) {
     });
   }
 
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new AppError({
+      code: 'VALIDATION',
+      message: 'lat o lng fuera de rango',
+      statusCode: 400,
+    });
+  }
+
   return {
     lat,
     lng,
     radiusKm: clamp(toNumber(query.radiusKm) ?? 10, 0.1, 50),
-    limit: clamp(toNumber(query.limit) ?? 100, 1, 300),
+    limit: clamp(toNumber(query.limit) ?? 50, 1, 50),
     includeProducts: String(query.includeProducts || '0') === '1',
-    productsLimit: clamp(toNumber(query.productsLimit) ?? 6, 1, 20),
+    productsLimit: clamp(toNumber(query.productsLimit) ?? 6, 1, 6),
     category: String(query.category || '').trim(),
     q: String(query.q || '').trim(),
   };

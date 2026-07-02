@@ -24,6 +24,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Encuéntrame usa la cámara para fotografiar tu puesto y sus productos.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Encuéntrame usa tu ubicación para abrir el puesto y mostrar negocios cercanos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Encuéntrame usa el micrófono para dictar el inventario.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Encuéntrame convierte el inventario dictado en texto.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

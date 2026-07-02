@@ -63,6 +63,27 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+async function mapWithConcurrency(items, concurrency, mapperFn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapperFn(items[index], index);
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, items.length) },
+      () => worker()
+    )
+  );
+  return results;
+}
+
 function buildVariants(value) {
   const normalized = normalizeText(value);
   if (!normalized) return [];
@@ -430,9 +451,11 @@ async function listOpenStallsNear({ currentUser, query }) {
     });
   }
 
-  const stallsWithProducts = await Promise.all(
-    stalls.map(async (stall) => {
-      const items = await repository.listProductsByStallId(stall.stallId, 80);
+  const stallsWithProducts = await mapWithConcurrency(
+    stalls,
+    5,
+    async (stall) => {
+      const items = await repository.listProductsByStallId(stall.stallId, 30);
 
       const productsPreview = items
         .map(mapProduct)
@@ -445,7 +468,7 @@ async function listOpenStallsNear({ currentUser, query }) {
         ...stallData,
         productsPreview,
       };
-    })
+    }
   );
 
   return mapper.toOpenStallsResponse({
@@ -474,7 +497,7 @@ async function searchProductsNear({ currentUser, query }) {
       lat: String(lat),
       lng: String(lng),
       radiusKm: String(radiusKm),
-      limit: '200',
+      limit: '20',
       includeProducts: '0',
       category,
     },
@@ -483,8 +506,8 @@ async function searchProductsNear({ currentUser, query }) {
   const stalls = nearbyStallsResponse.stalls || [];
   const results = [];
 
-  for (const stall of stalls) {
-    const items = await repository.listProductsByStallId(stall.stallId, 200);
+  const matchesByStall = await mapWithConcurrency(stalls, 5, async (stall) => {
+    const items = await repository.listProductsByStallId(stall.stallId, 100);
 
     const matches = items
       .map((item) => {
@@ -509,8 +532,9 @@ async function searchProductsNear({ currentUser, query }) {
       .filter((row) => row.product.active === true)
       .filter((row) => row.matchScore > 0);
 
-    results.push(...matches);
-  }
+    return matches;
+  });
+  results.push(...matchesByStall.flat());
 
   results.sort((a, b) => {
     if (a.distanceMeters !== b.distanceMeters) {

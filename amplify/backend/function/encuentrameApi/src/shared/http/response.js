@@ -1,7 +1,6 @@
 'use strict';
 
 const { AppError } = require('../errors/app-error');
-const { env } = require('../config/env');
 
 function corsHeaders() {
   return {
@@ -77,10 +76,7 @@ function toErrorResponse(error) {
           code: 'INTERNAL',
           message: 'Error interno',
           statusCode: 500,
-          details:
-            env.ENV === 'dev'
-              ? String(error?.message || 'Unknown error')
-              : undefined,
+          details: undefined,
         });
 
   return json(appError.statusCode, {

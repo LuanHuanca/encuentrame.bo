@@ -8,6 +8,7 @@ const {
   DeleteCommand,
   QueryCommand,
   BatchGetCommand,
+  TransactWriteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
 const { documentClient } = require('../../integrations/dynamodb/dynamo-client');
@@ -34,6 +35,12 @@ function skStall(stallId) {
 function skProduct(productId) {
   return `PROD#${productId}`;
 }
+
+function skOpenRequest(idempotencyKey) {
+  return `REQUEST#${idempotencyKey}`;
+}
+
+const OPEN_LOCK_SK = 'OPEN_LOCK';
 
 async function findUserStallLinks(userId) {
   const result = await documentClient.send(
@@ -94,6 +101,277 @@ async function userOwnsStall(userId, stallId) {
   );
 
   return !!result.Item;
+}
+
+async function getOpenRequest(stallId, idempotencyKey) {
+  const result = await documentClient.send(
+    new GetCommand({
+      TableName: env.OPENINGLOGS_TABLE,
+      Key: {
+        pk: pkStall(stallId),
+        sk: skOpenRequest(idempotencyKey),
+      },
+      ConsistentRead: true,
+    })
+  );
+
+  return result.Item || null;
+}
+
+async function beginOpenRequest({ stallId, userId, idempotencyKey, now }) {
+  await documentClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Item: {
+              pk: pkStall(stallId),
+              sk: skOpenRequest(idempotencyKey),
+              entityType: 'OPEN_REQUEST',
+              idempotencyKey,
+              userId,
+              status: 'PROCESSING',
+              createdAt: now,
+              updatedAt: now,
+            },
+            ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+          },
+        },
+        {
+          Put: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Item: {
+              pk: pkStall(stallId),
+              sk: OPEN_LOCK_SK,
+              entityType: 'OPEN_LOCK',
+              idempotencyKey,
+              userId,
+              createdAt: now,
+            },
+            ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+          },
+        },
+      ],
+    })
+  );
+}
+
+async function clearStaleOpenLock(stallId, cutoffIso) {
+  try {
+    await documentClient.send(
+      new DeleteCommand({
+        TableName: env.OPENINGLOGS_TABLE,
+        Key: { pk: pkStall(stallId), sk: OPEN_LOCK_SK },
+        ConditionExpression: 'createdAt < :cutoff',
+        ExpressionAttributeValues: { ':cutoff': cutoffIso },
+      })
+    );
+    return true;
+  } catch (error) {
+    if (error?.name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
+}
+
+async function completeOpenRequest({
+  stallId,
+  userId,
+  idempotencyKey,
+  openingKey,
+  openingItem,
+  response,
+  profile,
+  now,
+}) {
+  const profileUpdate = {
+    TableName: env.STALLS_TABLE,
+    Key: {
+      pk: pkStall(stallId),
+      sk: 'PROFILE',
+    },
+    UpdateExpression: `
+      SET currentOpen = :currentOpen,
+          currentOpenStatus = :openStatus,
+          currentOpenedAt = :openedAt,
+          currentLat = :lat,
+          currentLng = :lng,
+          currentAccuracy = :accuracy,
+          currentAddressLabel = :addressLabel,
+          currentAddress = :address,
+          currentStallPhotoKey = :stallPhotoKey,
+          currentProductsPhotoKey = :productsPhotoKey,
+          currentInventoryItems = :inventoryItems,
+          currentInventorySuggestions = :inventorySuggestions,
+          gsi1pk = :gsi1pk,
+          gsi1sk = :gsi1sk,
+          updatedAt = :updatedAt
+    `,
+    ConditionExpression:
+      'vendorUserId = :userId AND (attribute_not_exists(currentOpen) OR currentOpen = :empty)',
+    ExpressionAttributeValues: {
+      ':userId': userId,
+      ':empty': null,
+      ':currentOpen': openingKey,
+      ':openStatus': 'OPEN',
+      ':openedAt': now,
+      ':lat': profile.lat,
+      ':lng': profile.lng,
+      ':accuracy': profile.accuracy,
+      ':addressLabel': profile.addressLabel,
+      ':address': profile.address,
+      ':stallPhotoKey': profile.stallPhotoKey,
+      ':productsPhotoKey': profile.productsPhotoKey,
+      ':inventoryItems': profile.inventoryItems,
+      ':inventorySuggestions': profile.inventorySuggestions,
+      ':gsi1pk': 'OPEN',
+      ':gsi1sk': `OPEN#${now}#${stallId}`,
+      ':updatedAt': now,
+    },
+  };
+
+  await documentClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        { Update: profileUpdate },
+        {
+          Put: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Item: {
+              pk: pkStall(stallId),
+              sk: openingKey,
+              ...openingItem,
+            },
+            ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+          },
+        },
+        {
+          Update: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Key: {
+              pk: pkStall(stallId),
+              sk: skOpenRequest(idempotencyKey),
+            },
+            UpdateExpression:
+              'SET #status = :completed, openingKey = :openingKey, response = :response, updatedAt = :updatedAt',
+            ConditionExpression: '#status = :processing AND userId = :userId',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':completed': 'COMPLETED',
+              ':processing': 'PROCESSING',
+              ':openingKey': openingKey,
+              ':response': response,
+              ':updatedAt': now,
+              ':userId': userId,
+            },
+          },
+        },
+        {
+          Delete: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Key: { pk: pkStall(stallId), sk: OPEN_LOCK_SK },
+            ConditionExpression: 'idempotencyKey = :idempotencyKey',
+            ExpressionAttributeValues: { ':idempotencyKey': idempotencyKey },
+          },
+        },
+      ],
+    })
+  );
+}
+
+async function completeReviewRequest({
+  stallId,
+  userId,
+  idempotencyKey,
+  openingKey,
+  openingItem,
+  response,
+  now,
+}) {
+  await documentClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Item: {
+              pk: pkStall(stallId),
+              sk: openingKey,
+              ...openingItem,
+            },
+            ConditionExpression: 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+          },
+        },
+        {
+          Update: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Key: {
+              pk: pkStall(stallId),
+              sk: skOpenRequest(idempotencyKey),
+            },
+            UpdateExpression:
+              'SET #status = :completed, openingKey = :openingKey, response = :response, updatedAt = :updatedAt',
+            ConditionExpression: '#status = :processing AND userId = :userId',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':completed': 'COMPLETED',
+              ':processing': 'PROCESSING',
+              ':openingKey': openingKey,
+              ':response': response,
+              ':updatedAt': now,
+              ':userId': userId,
+            },
+          },
+        },
+        {
+          Delete: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Key: { pk: pkStall(stallId), sk: OPEN_LOCK_SK },
+            ConditionExpression: 'idempotencyKey = :idempotencyKey',
+            ExpressionAttributeValues: { ':idempotencyKey': idempotencyKey },
+          },
+        },
+      ],
+    })
+  );
+}
+
+async function failOpenRequest({ stallId, idempotencyKey, now, errorCode }) {
+  try {
+    await documentClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: env.OPENINGLOGS_TABLE,
+              Key: {
+                pk: pkStall(stallId),
+                sk: skOpenRequest(idempotencyKey),
+              },
+              UpdateExpression:
+                'SET #status = :failed, errorCode = :errorCode, updatedAt = :updatedAt',
+              ExpressionAttributeNames: { '#status': 'status' },
+              ExpressionAttributeValues: {
+                ':failed': 'FAILED',
+                ':errorCode': String(errorCode || 'OPEN_FAILED'),
+                ':updatedAt': now,
+              },
+            },
+          },
+          {
+            Delete: {
+              TableName: env.OPENINGLOGS_TABLE,
+              Key: { pk: pkStall(stallId), sk: OPEN_LOCK_SK },
+              ConditionExpression: 'idempotencyKey = :idempotencyKey',
+              ExpressionAttributeValues: { ':idempotencyKey': idempotencyKey },
+            },
+          },
+        ],
+      })
+    );
+  } catch (_) {
+    // No oculta el error original. Una operación posterior puede limpiar el lock.
+  }
 }
 
 async function createStall({
@@ -473,47 +751,56 @@ async function listOpenings(stallId, limit) {
 
 async function closeOpening({ stallId, openingKey, now }) {
   await documentClient.send(
-    new UpdateCommand({
-      TableName: env.OPENINGLOGS_TABLE,
-      Key: {
-        pk: pkStall(stallId),
-        sk: openingKey,
-      },
-      UpdateExpression: 'SET #status = :status, closedAt = :closedAt',
-      ExpressionAttributeNames: {
-        '#status': 'status',
-      },
-      ExpressionAttributeValues: {
-        ':status': 'CLOSED',
-        ':closedAt': now,
-      },
-    })
-  );
-
-  await documentClient.send(
-    new UpdateCommand({
-      TableName: env.STALLS_TABLE,
-      Key: {
-        pk: pkStall(stallId),
-        sk: 'PROFILE',
-      },
-      UpdateExpression: `
-        REMOVE gsi1pk,
-               gsi1sk,
-               currentOpenStatus,
-               currentOpenedAt,
-               currentAccuracy,
-               currentStallPhotoKey,
-               currentProductsPhotoKey,
-               currentInventoryItems,
-               currentInventorySuggestions
-        SET currentOpen = :currentOpen,
-            updatedAt = :updatedAt
-      `,
-      ExpressionAttributeValues: {
-        ':currentOpen': null,
-        ':updatedAt': now,
-      },
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Update: {
+            TableName: env.OPENINGLOGS_TABLE,
+            Key: {
+              pk: pkStall(stallId),
+              sk: openingKey,
+            },
+            UpdateExpression: 'SET #status = :closed, closedAt = :closedAt',
+            ConditionExpression: '#status = :open',
+            ExpressionAttributeNames: {
+              '#status': 'status',
+            },
+            ExpressionAttributeValues: {
+              ':open': 'OPEN',
+              ':closed': 'CLOSED',
+              ':closedAt': now,
+            },
+          },
+        },
+        {
+          Update: {
+            TableName: env.STALLS_TABLE,
+            Key: {
+              pk: pkStall(stallId),
+              sk: 'PROFILE',
+            },
+            UpdateExpression: `
+              REMOVE gsi1pk,
+                     gsi1sk,
+                     currentOpenStatus,
+                     currentOpenedAt,
+                     currentAccuracy,
+                     currentStallPhotoKey,
+                     currentProductsPhotoKey,
+                     currentInventoryItems,
+                     currentInventorySuggestions
+              SET currentOpen = :empty,
+                  updatedAt = :updatedAt
+            `,
+            ConditionExpression: 'currentOpen = :openingKey',
+            ExpressionAttributeValues: {
+              ':openingKey': openingKey,
+              ':empty': null,
+              ':updatedAt': now,
+            },
+          },
+        },
+      ],
     })
   );
 }
@@ -573,6 +860,12 @@ module.exports = {
   findFirstOwnedStall,
   getStallProfile,
   userOwnsStall,
+  getOpenRequest,
+  beginOpenRequest,
+  clearStaleOpenLock,
+  completeOpenRequest,
+  completeReviewRequest,
+  failOpenRequest,
   createStall,
   batchGetProfiles,
   updateStallProfile,

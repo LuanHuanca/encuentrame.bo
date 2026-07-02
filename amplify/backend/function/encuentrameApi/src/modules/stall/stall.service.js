@@ -55,7 +55,6 @@ function ensureOpenEnv() {
 function awsDetails(error) {
   return {
     name: error?.name,
-    message: error?.message,
     status: error?.$metadata?.httpStatusCode,
   };
 }
@@ -64,21 +63,59 @@ async function upsertProductsFromInventory({ stallId, items, now }) {
   if (!env.PRODUCTS_TABLE) return;
   if (!items?.length) return;
 
-  for (const item of items) {
-    const productId = slugify(item.canonical);
-    if (!productId) continue;
+  const queue = items.slice(0, 50);
+  const worker = async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      const productId = slugify(item?.canonical);
+      if (!productId) continue;
 
-    await repository.upsertProduct({
-      stallId,
-      productId,
-      canonical: item.canonical,
-      display: item.display || item.canonical,
-      category: item.category ?? null,
-      tags: item.tags ?? [],
-      qty: item.qty ?? 1,
-      now,
+      await repository.upsertProduct({
+        stallId,
+        productId,
+        canonical: item.canonical,
+        display: item.display || item.canonical,
+        category: item.category ?? null,
+        tags: item.tags ?? [],
+        qty: item.qty ?? 1,
+        now,
+      });
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(5, queue.length) }, () => worker())
+  );
+}
+
+function idempotencyConflict(message, code = 'OPEN_IN_PROGRESS') {
+  return new AppError({ code, message, statusCode: 409 });
+}
+
+async function resolveExistingOpenRequest({ stallId, userId, idempotencyKey }) {
+  const request = await repository.getOpenRequest(stallId, idempotencyKey);
+
+  if (!request) {
+    throw idempotencyConflict('Otra apertura está en proceso');
+  }
+  if (request.userId !== userId) {
+    throw new AppError({
+      code: 'FORBIDDEN',
+      message: 'La solicitud no pertenece al usuario autenticado',
+      statusCode: 403,
     });
   }
+  if (request.status === 'COMPLETED' && request.response) {
+    return request.response;
+  }
+  if (request.status === 'PROCESSING') {
+    throw idempotencyConflict('La apertura todavía está en proceso');
+  }
+
+  throw idempotencyConflict(
+    'La solicitud anterior falló; vuelve a intentar',
+    'OPEN_REQUEST_FAILED'
+  );
 }
 
 function mapOwnedStall(profile, link) {
@@ -299,7 +336,7 @@ async function open(currentUser, payload) {
   requireAuthenticated(currentUser);
   ensureOpenEnv();
 
-  const input = validateOpenStallInput(payload);
+  const input = validateOpenStallInput(payload, currentUser);
 
   const owns = await repository.userOwnsStall(currentUser.userId, input.stallId);
   if (!owns) {
@@ -310,105 +347,136 @@ async function open(currentUser, payload) {
     });
   }
 
+  const stallProfile = await repository.getStallProfile(input.stallId);
+  if (!stallProfile) {
+    throw new AppError({
+      code: 'NOT_FOUND',
+      message: 'Puesto no existe',
+      statusCode: 404,
+    });
+  }
+  if (stallProfile.active === false) {
+    throw new AppError({
+      code: 'STALL_INACTIVE',
+      message: 'Activa el puesto antes de abrirlo',
+      statusCode: 400,
+    });
+  }
+
+  const existingRequest = await repository.getOpenRequest(
+    input.stallId,
+    input.idempotencyKey
+  );
+  if (existingRequest) {
+    return resolveExistingOpenRequest({
+      stallId: input.stallId,
+      userId: currentUser.userId,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
+  if (stallProfile.currentOpen) {
+    throw idempotencyConflict(
+      'El puesto ya tiene una apertura activa',
+      'STALL_ALREADY_OPEN'
+    );
+  }
+
   const now = nowIso();
   const openingKey = `OPEN#${now}#${repository.uuid()}`;
-
-  const geo = await reverseGeocode(input.lat, input.lng);
-
-  let labels = [];
-  let moderation = [];
-  let stallPhotoKey = normalizeS3Key(input.stallPhotoKey);
-  let productsPhotoKey = normalizeS3Key(input.productsPhotoKey);
+  let requestStarted = false;
 
   try {
-    const [labelsResult, moderationResult] = await Promise.all([
-      detectLabelsFromS3Key(productsPhotoKey),
-      detectModerationFromS3Key(stallPhotoKey),
-    ]);
-
-    labels = labelsResult.labels;
-    moderation = moderationResult.moderation;
-    productsPhotoKey = labelsResult.keyUsed;
-    stallPhotoKey = moderationResult.keyUsed;
+    await repository.clearStaleOpenLock(
+      input.stallId,
+      new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    );
+    await repository.beginOpenRequest({
+      stallId: input.stallId,
+      userId: currentUser.userId,
+      idempotencyKey: input.idempotencyKey,
+      now,
+    });
+    requestStarted = true;
   } catch (error) {
-    logger.error('REKOGNITION_ERROR', awsDetails(error));
+    if (
+      error?.name === 'TransactionCanceledException' ||
+      error?.name === 'ConditionalCheckFailedException'
+    ) {
+      return resolveExistingOpenRequest({
+        stallId: input.stallId,
+        userId: currentUser.userId,
+        idempotencyKey: input.idempotencyKey,
+      });
+    }
+    throw error;
+  }
 
-    if (isResourceNotFound(error)) {
+  try {
+    const geo = await reverseGeocode(input.lat, input.lng);
+    let labels = [];
+    let moderation = [];
+    let stallPhotoKey = normalizeS3Key(input.stallPhotoKey);
+    let productsPhotoKey = normalizeS3Key(input.productsPhotoKey);
+
+    try {
+      const [labelsResult, moderationResult] = await Promise.all([
+        detectLabelsFromS3Key(productsPhotoKey),
+        detectModerationFromS3Key(stallPhotoKey),
+      ]);
+
+      labels = labelsResult.labels;
+      moderation = moderationResult.moderation;
+      productsPhotoKey = labelsResult.keyUsed;
+      stallPhotoKey = moderationResult.keyUsed;
+    } catch (error) {
+      logger.error('REKOGNITION_ERROR', awsDetails(error));
+
+      if (isResourceNotFound(error)) {
+        throw new AppError({
+          code: 'PHOTO_NOT_FOUND',
+          message: 'No se encontró la foto en S3',
+          statusCode: 400,
+        });
+      }
+
       throw new AppError({
-        code: 'PHOTO_NOT_FOUND',
-        message: 'No se encontró la foto en S3',
-        statusCode: 400,
-        details: JSON.stringify({
-          bucket: env.BUCKET_NAME,
-          stallPhotoKey,
-          productsPhotoKey,
-        }),
+        code: 'REKOGNITION_ERROR',
+        message: 'Error procesando las fotos',
+        statusCode: 500,
       });
     }
 
-    throw new AppError({
-      code: 'REKOGNITION_ERROR',
-      message: 'Error en Rekognition',
-      statusCode: 500,
-      details: JSON.stringify(awsDetails(error)),
-    });
-  }
+    let inventory = null;
+    try {
+      inventory = await extractInventory({
+        rawText: input.inventoryText,
+        labels,
+      });
+    } catch (error) {
+      logger.error('BEDROCK_ERROR', awsDetails(error));
+    }
 
-  let inventory = null;
+    inventory = inventory
+      ? { items: sanitizeInventoryItems(inventory.items) }
+      : fallbackInventoryParse(input.inventoryText);
 
-  try {
-    inventory = await extractInventory({
-      rawText: input.inventoryText,
-      labels,
-    });
-  } catch (error) {
-    logger.error('BEDROCK_ERROR', awsDetails(error));
-    inventory = null;
-  }
+    const reconciled = reconcileInventory(inventory.items, labels);
+    if (reconciled.items.length > 50) {
+      throw new AppError({
+        code: 'TOO_MANY_PRODUCTS',
+        message: 'El inventario no puede superar 50 productos',
+        statusCode: 400,
+      });
+    }
 
-  if (!inventory) {
-    inventory = fallbackInventoryParse(input.inventoryText);
-  } else {
-    inventory = {
-      items: sanitizeInventoryItems(inventory.items),
-    };
-  }
-
-  const reconciled = reconcileInventory(inventory.items, labels);
-  const flagged = moderation.length > 0;
-  const status = flagged ? 'REVIEW' : 'OPEN';
-
-  await upsertProductsFromInventory({
-    stallId: input.stallId,
-    items: reconciled.items,
-    now,
-  });
-
-  await repository.setStallOpened({
-    stallId: input.stallId,
-    userId: currentUser.userId,
-    name: input.stallName,
-    lat: input.lat,
-    lng: input.lng,
-    accuracy: input.accuracy,
-    addressLabel: geo?.label ?? null,
-    address: geo?.address ?? null,
-    stallPhotoKey,
-    productsPhotoKey,
-    inventoryItems: reconciled.items,
-    inventorySuggestions: reconciled.suggestions,
-    status,
-    openingKey,
-    now,
-  });
-
-  await repository.createOpeningLog({
-    stallId: input.stallId,
-    openingKey,
-    item: {
+    const status = moderation.length > 0 ? 'REVIEW' : 'OPEN';
+    const openingItem = {
       entityType: 'OPENING',
       status,
       openedAt: now,
+      userId: currentUser.userId,
+      idempotencyKey: input.idempotencyKey,
       lat: input.lat,
       lng: input.lng,
       accuracy: input.accuracy,
@@ -421,28 +489,88 @@ async function open(currentUser, payload) {
       inventoryRaw: input.inventoryText,
       inventoryItems: reconciled.items,
       inventorySuggestions: reconciled.suggestions,
-    },
-  });
+    };
+    const response = mapper.toOpenResponse({
+      stallId: input.stallId,
+      openingKey,
+      status,
+      location: {
+        lat: input.lat,
+        lng: input.lng,
+        accuracy: input.accuracy,
+        addressLabel: geo?.label ?? null,
+      },
+      inventory: {
+        items: reconciled.items.map((item) => ({
+          display: item.display,
+          qty: item.qty,
+          canonical: item.canonical,
+        })),
+        suggestions: reconciled.suggestions,
+      },
+    });
 
-  return mapper.toOpenResponse({
-    stallId: input.stallId,
-    openingKey,
-    status,
-    location: {
-      lat: input.lat,
-      lng: input.lng,
-      accuracy: input.accuracy,
-      addressLabel: geo?.label ?? null,
-    },
-    inventory: {
-      items: reconciled.items.map((item) => ({
-        display: item.display,
-        qty: item.qty,
-        canonical: item.canonical,
-      })),
-      suggestions: reconciled.suggestions,
-    },
-  });
+    if (status === 'REVIEW') {
+      await repository.completeReviewRequest({
+        stallId: input.stallId,
+        userId: currentUser.userId,
+        idempotencyKey: input.idempotencyKey,
+        openingKey,
+        openingItem,
+        response,
+        now,
+      });
+      requestStarted = false;
+      return response;
+    }
+
+    await repository.completeOpenRequest({
+      stallId: input.stallId,
+      userId: currentUser.userId,
+      idempotencyKey: input.idempotencyKey,
+      openingKey,
+      openingItem,
+      response,
+      profile: {
+        lat: input.lat,
+        lng: input.lng,
+        accuracy: input.accuracy,
+        addressLabel: geo?.label ?? null,
+        address: geo?.address ?? null,
+        stallPhotoKey,
+        productsPhotoKey,
+        inventoryItems: reconciled.items,
+        inventorySuggestions: reconciled.suggestions,
+      },
+      now,
+    });
+    requestStarted = false;
+
+    try {
+      await upsertProductsFromInventory({
+        stallId: input.stallId,
+        items: reconciled.items,
+        now,
+      });
+    } catch (error) {
+      logger.error('PRODUCT_SYNC_ERROR', {
+        ...awsDetails(error),
+        stallId: input.stallId,
+      });
+    }
+
+    return response;
+  } catch (error) {
+    if (requestStarted) {
+      await repository.failOpenRequest({
+        stallId: input.stallId,
+        idempotencyKey: input.idempotencyKey,
+        now: nowIso(),
+        errorCode: error?.code || error?.name,
+      });
+    }
+    throw error;
+  }
 }
 
 async function getCurrent(currentUser, stallId) {

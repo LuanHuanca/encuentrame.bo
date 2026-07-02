@@ -21,7 +21,7 @@ class EncuentrameApiService {
     double radiusKm = 10,
     int limit = 50,
     bool includeProducts = false,
-    int productsLimit = 20,
+    int productsLimit = 6,
     String? category,
   }) {
     final queryParameters = <String, String>{
@@ -153,6 +153,7 @@ class EncuentrameApiService {
     required String stallPhotoKey,
     required String productsPhotoKey,
     required String inventoryText,
+    required String idempotencyKey,
   }) {
     return _client.post(
       ApiConstants.stallsOpen,
@@ -165,6 +166,7 @@ class EncuentrameApiService {
         'stallPhotoKey': stallPhotoKey,
         'productsPhotoKey': productsPhotoKey,
         'inventoryText': inventoryText.trim(),
+        'idempotencyKey': idempotencyKey,
       },
     );
   }
